@@ -358,15 +358,8 @@ async function handleFormSubmit(event) {
   formData.append('_template', 'table');
   formData.append('_captcha', 'false');
 
-  // Determine submission endpoint
-  let submissionUrl = '';
-  if (YCCCI_CONFIG.FORM_ENDPOINT && YCCCI_CONFIG.FORM_ENDPOINT.trim() !== '') {
-    submissionUrl = YCCCI_CONFIG.FORM_ENDPOINT;
-  } else {
-    // FormSubmit.co AJAX endpoint with church admin email
-    const adminEmail = (YCCCI_CONFIG.ADMIN_EMAIL && YCCCI_CONFIG.ADMIN_EMAIL.trim()) || 'ycccicatholic@gmail.com';
-    submissionUrl = `https://formsubmit.co/ajax/${encodeURIComponent(adminEmail)}`;
-  }
+  // Determine submission endpoint (calls backend /api/submit-intention)
+  let submissionUrl = (YCCCI_CONFIG.API_ENDPOINT && YCCCI_CONFIG.API_ENDPOINT.trim()) || '/api/submit-intention';
 
   try {
     const response = await fetch(submissionUrl, {
@@ -377,17 +370,15 @@ async function handleFormSubmit(event) {
       }
     });
 
-    if (response.ok) {
-      // Backend / Form Service confirmed receipt!
+    const resData = await response.json().catch(() => null);
+
+    if (response.ok && (!resData || resData.success !== false)) {
+      // Backend & email provider confirmed message accepted!
       revealSuccessScreen(referenceCode);
     } else {
-      // If service returned non-200, attempt to parse message
-      let errDetails = 'Submission could not be completed. Please check your internet connection and try again.';
-      try {
-        const resData = await response.json();
-        if (resData && resData.message) errDetails = resData.message;
-      } catch (e) {}
-
+      let errDetails = (resData && resData.message)
+        ? resData.message
+        : 'Submission could not be completed. Please check your internet connection and try again.';
       alert(`Notice: ${errDetails}`);
       resetSubmitButton();
     }

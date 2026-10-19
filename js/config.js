@@ -1,12 +1,12 @@
 // YCCCI Mass Booking Configuration
-// Update ADMIN_EMAIL to the church's official email to receive intentions & payment receipts via FormSubmit.co
 const YCCCI_CONFIG = {
-  // Administrator email where FormSubmit.co sends booking notifications & receipts
-  ADMIN_EMAIL: 'ycccicatholic@gmail.com',
+  // Official Administrator Email where Mass intentions and payment receipts are delivered
+  ADMIN_EMAIL: 'youngchosenforchrist@gmail.com',
 
-  // Configurable fallback or alternative submission endpoint (e.g. Formspree or custom webhook)
-  // If you prefer Formspree, you can put: 'https://formspree.io/f/YOUR_FORM_ID'
-  FORM_ENDPOINT: '',
+  // Backend API Endpoint for processing Mass intentions via Resend
+  // If your backend is deployed on a separate Render Web Service URL, enter it here:
+  // e.g. 'https://yccci-mass-booking-api.onrender.com/api/submit-intention'
+  API_ENDPOINT: '/api/submit-intention',
 
   // Official Church Bank Details
   BANK_NAME: 'Zenith Bank',
@@ -16,9 +16,9 @@ const YCCCI_CONFIG = {
   // Official Shop URL
   SHOP_URL: 'https://shop.youngandchosenforchrist.com',
 
-  // Default logo path (checks local asset first, falls back to Google Stitch URL)
-  LOCAL_LOGO_PATH: 'assets/yccci-logo.png',
-  STITCH_LOGO_URL: 'https://lh3.googleusercontent.com/aida/AEtjO1WI4K9TKoNZFjxUZBts56d6wW8mwuzH0fbDWFP2h-h74UdYo_26jMsRxZGyS0HMja3xRBCz3sRkYmJqKX3irCOp0qhOHH5yA1KwCnIkOIwb8V62yB4QlCry-qjeLZH3cogSOS5t5Gw77DiX_0e5g4A-7HaD9SIuh6cZoqBSKdpxYa07-2gAe-55ofpGCnnAPAU_agb2jPBkdfOQP9Rc1PPxZMgguJlklr6oqM8FbJlfHye65eDKGVk',
+  // Official logo path
+  LOCAL_LOGO_PATH: 'assets/image.png',
+  STITCH_LOGO_URL: 'assets/image.png',
 
   // Arched Sanctuary Image URL from Stitch design
   SANCTUARY_IMAGE_URL: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAXnejfzFTy3U56iyZBpMFna_ml-6nXfhA7bbxJ3O6EzJgBrwx5MFFsJncEKK5Rv3jt694vmgFeJF8G4ZIC4nh5513xPD4h3jYf4iavKCfHeKoxXFkSffbJneDYHcvNmV9IPQ79mj8oUhR1ZpCxxxlqs12jLxpKkbEadPIhD5Pp_PD5UQipvhXJREKPDt0rgYqWN5ja1s-eXXAXrwWY5S4UMHnrkIbUUA9aZGKJ7VDClz9fRSrNQg'
