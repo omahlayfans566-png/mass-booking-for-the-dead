@@ -1,0 +1,302 @@
+/* ==========================================================================
+   YCCCI November Mass Booking - Stylesheet
+   Color Palette: White (#FDFBF7, #FBF8FF), Wine/Burgundy (#4D0011, #6B1724), Gold (#775A19, #DFD7C7)
+   ========================================================================== */
+
+/* Google Fonts & Base setup */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --color-primary: #4D0011;
+  --color-primary-container: #6B1724;
+  --color-secondary: #775A19;
+  --color-gold-accent: #C29B52;
+  --color-warm-white: #FDFBF7;
+  --color-surface: #FBF8FF;
+  --color-border: #DFD7C7;
+  --color-text-main: #1B1B20;
+  --color-text-muted: #554243;
+}
+
+/* Hide scrollbar on intro if needed */
+body.intro-active {
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   CINEMATIC INTRO & SPLIT SCREEN REVEAL
+   -------------------------------------------------------------------------- */
+#introOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  pointer-events: auto;
+  transition: visibility 0.3s ease;
+}
+
+#introOverlay.hidden-intro {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Split Door Panels */
+.intro-door {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc(50% + 2px); /* Seamless overlap in the center with zero dividing line */
+  background-color: var(--color-warm-white);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: transform 1.3s cubic-bezier(0.77, 0, 0.175, 1);
+  z-index: 1;
+}
+
+.intro-door-left {
+  left: 0;
+  border: none !important;
+}
+
+.intro-door-right {
+  right: 0;
+  border: none !important;
+}
+
+/* Split Open Action */
+#introOverlay.doors-open .intro-door-left {
+  transform: translateX(-100%);
+}
+
+#introOverlay.doors-open .intro-door-right {
+  transform: translateX(100%);
+}
+
+#introOverlay.doors-open .intro-content-container {
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 0.5s ease, transform 0.6s ease;
+  pointer-events: none;
+}
+
+/* Central Content Container */
+.intro-content-container {
+  position: relative;
+  z-index: 2;
+  max-width: 640px;
+  width: 90%;
+  margin: 0 auto;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  transition: opacity 0.4s ease;
+}
+
+/* Intro Text Scenes */
+.intro-scene {
+  display: none;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.intro-scene.active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.intro-scene.fade-out {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* Skip Intro Button */
+.skip-intro-btn {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 10;
+  background: rgba(253, 251, 247, 0.9);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 1.1rem;
+  border-radius: 9999px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.skip-intro-btn:hover {
+  background: var(--color-primary);
+  color: #FFFFFF;
+  border-color: var(--color-primary);
+}
+
+/* --------------------------------------------------------------------------
+   PROGRESSIVE ANIMATED GREEN CHECKMARK (SVG DRAW)
+   -------------------------------------------------------------------------- */
+.checkmark-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-width: 3.5;
+  stroke-miterlimit: 10;
+  stroke: #16A34A; /* Refined liturgical green */
+  fill: none;
+  animation: strokeCircle 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.checkmark-check {
+  transform-origin: 50% 50%;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  stroke-width: 3.8;
+  stroke: #16A34A;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  animation: strokeCheck 0.5s cubic-bezier(0.65, 0, 0.45, 1) 0.55s forwards;
+}
+
+@keyframes strokeCircle {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes strokeCheck {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Green Glow behind checkmark */
+.checkmark-container {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 3.5;
+  stroke: #16A34A;
+  stroke-miterlimit: 10;
+  margin: 0 auto 1.5rem auto;
+  box-shadow: inset 0px 0px 0px #16A34A;
+  animation: fillGreenGlow 0.4s ease-in-out 0.9s forwards, scaleCheck 0.3s ease-in-out 0.9s both;
+}
+
+@keyframes fillGreenGlow {
+  100% {
+    box-shadow: inset 0px 0px 0px 42px rgba(22, 163, 74, 0.08);
+  }
+}
+
+@keyframes scaleCheck {
+  0%, 100% {
+    transform: none;
+  }
+  50% {
+    transform: scale3d(1.08, 1.08, 1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   DEDICATED FULLSCREEN SUCCESS SCREEN
+   -------------------------------------------------------------------------- */
+#successScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background-color: #FFFFFF;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.5s;
+}
+
+#successScreen.active-success {
+  opacity: 1;
+  visibility: visible;
+}
+
+.success-card {
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+  margin: auto;
+}
+
+/* --------------------------------------------------------------------------
+   ADD DECEASED ANIMATIONS & UTILITIES
+   -------------------------------------------------------------------------- */
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Spinner for submit button */
+.btn-spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #FFFFFF;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   REDUCED MOTION ACCESSIBILITY
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .intro-door,
+  .intro-scene,
+  .checkmark-circle,
+  .checkmark-check,
+  .checkmark-container,
+  #successScreen,
+  .animate-fade-in {
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .checkmark-circle,
+  .checkmark-check {
+    stroke-dashoffset: 0 !important;
+  }
+  
+  #introOverlay.doors-open {
+    display: none !important;
+  }
+}
