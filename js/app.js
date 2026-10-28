@@ -2,12 +2,13 @@
 // YCCCI November Mass Booking - Main Application Script
 // =============================================================================
 
-let selectedFile = null;
 let deceasedCount = 1;
+let currentBookingDraft = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initCinematicIntro();
   initLogos();
+  checkPaymentReturnUrl();
 });
 
 // -----------------------------------------------------------------------------
@@ -21,7 +22,11 @@ function initCinematicIntro() {
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const alreadyPlayed = sessionStorage.getItem('yccci_intro_played');
 
-  if (prefersReducedMotion || alreadyPlayed) {
+  // Also skip intro immediately if returning with a payment reference
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasPaymentReturn = urlParams.has('reference') || urlParams.has('trxref');
+
+  if (prefersReducedMotion || alreadyPlayed || hasPaymentReturn) {
     skipIntro();
     return;
   }
@@ -54,8 +59,7 @@ function switchIntroScene(hideId, showId) {
     if (hideEl) hideEl.style.display = 'none';
     if (showEl) {
       showEl.style.display = 'flex';
-      // Trigger reflow
-      void showEl.offsetWidth;
+      void showEl.offsetWidth; // Trigger reflow
       showEl.classList.add('active');
     }
   }, 300);
@@ -68,7 +72,6 @@ function splitAndReveal() {
   introOverlay.classList.add('doors-open');
   sessionStorage.setItem('yccci_intro_played', 'true');
 
-  // Remove intro overlay from flow after transition finishes
   setTimeout(() => {
     introOverlay.classList.add('hidden-intro');
     document.body.classList.remove('intro-active');
@@ -90,11 +93,9 @@ function skipIntro() {
 function initLogos() {
   if (typeof YCCCI_CONFIG === 'undefined') return;
 
-  // Attempt to check if local logo exists; fallback seamlessly to Stitch emblem
   const localLogo = new Image();
   localLogo.src = YCCCI_CONFIG.LOCAL_LOGO_PATH;
   localLogo.onload = () => {
-    // If local logo is placed by church, use it
     const logoEls = ['introLogoImg', 'navLogoImg', 'leftColLogoImg'];
     logoEls.forEach(id => {
       const el = document.getElementById(id);
@@ -132,7 +133,6 @@ function addDeceasedRow() {
   `;
   container.appendChild(row);
 
-  // Focus newly added input
   const newInput = row.querySelector('.deceased-input');
   if (newInput) newInput.focus();
 }
@@ -144,153 +144,68 @@ function removeDeceasedRow(buttonEl) {
   }
 }
 
-
+// -----------------------------------------------------------------------------
+// 4. OFFERING PRESET AMOUNTS
+// -----------------------------------------------------------------------------
+function selectPresetAmount(amount) {
+  const input = document.getElementById('customOffering');
+  if (input) {
+    input.value = amount.toLocaleString();
+  }
+  // Highlight active pill
+  document.querySelectorAll('.offering-pill').forEach(btn => {
+    btn.classList.remove('selected');
+    if (btn.innerText.includes(amount.toLocaleString())) {
+      btn.classList.add('selected');
+    }
+  });
+}
 
 // -----------------------------------------------------------------------------
-// 5. COPY ACCOUNT NUMBER
+// 5. STATUS ALERT BANNER
 // -----------------------------------------------------------------------------
-function copyAccountNumber() {
-  const acc = '1228821057';
-  const badge = document.getElementById('copySuccessBadge');
-  const btnText = document.getElementById('copyBtnText');
+function showStatusAlert(title, message, isError = false) {
+  const alert = document.getElementById('formStatusAlert');
+  const titleEl = document.getElementById('formStatusTitle');
+  const msgEl = document.getElementById('formStatusMessage');
+  const iconEl = document.getElementById('formStatusIcon');
 
-  const onCopied = () => {
-    if (badge) badge.classList.remove('hidden');
-    if (btnText) btnText.innerText = 'Copied!';
-    setTimeout(() => {
-      if (badge) badge.classList.add('hidden');
-      if (btnText) btnText.innerText = 'Copy Account Number';
-    }, 2500);
-  };
+  if (!alert) return;
 
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(acc).then(onCopied).catch(() => {
-      fallbackCopyText(acc, onCopied);
-    });
+  if (titleEl) titleEl.innerText = title;
+  if (msgEl) msgEl.innerText = message;
+
+  if (isError) {
+    alert.className = 'p-space-md rounded-xl text-sm flex items-start gap-space-sm border border-red-300 bg-red-50 text-red-900 shadow-sm';
+    if (iconEl) {
+      iconEl.innerText = 'error';
+      iconEl.className = 'material-symbols-outlined text-[20px] shrink-0 mt-0.5 text-red-700';
+    }
   } else {
-    fallbackCopyText(acc, onCopied);
+    alert.className = 'p-space-md rounded-xl text-sm flex items-start gap-space-sm border border-[#DFD7C7] bg-[#FDFBF7] text-on-surface shadow-sm';
+    if (iconEl) {
+      iconEl.innerText = 'info';
+      iconEl.className = 'material-symbols-outlined text-[20px] shrink-0 mt-0.5 text-secondary';
+    }
   }
+
+  alert.classList.remove('hidden');
+  alert.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function fallbackCopyText(text, callback) {
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-9999px';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-  try {
-    document.execCommand('copy');
-    if (callback) callback();
-  } catch (err) {
-    alert('Bank Account Number: ' + text);
-  }
-  document.body.removeChild(textArea);
+function hideStatusAlert() {
+  const alert = document.getElementById('formStatusAlert');
+  if (alert) alert.classList.add('hidden');
 }
 
 // -----------------------------------------------------------------------------
-// 6. PROOF OF PAYMENT FILE UPLOAD & VALIDATION
+// 6. FORM SUBMISSION -> STEP 2: REVIEW MODAL
 // -----------------------------------------------------------------------------
-function triggerFileInput() {
-  const input = document.getElementById('receiptFileInput');
-  if (input) input.click();
-}
-
-function handleFileSelected(event) {
-  const file = event.target.files && event.target.files[0];
-  processUploadedFile(file);
-}
-
-function handleDragOver(event) {
+function handleFormSubmit(event) {
   event.preventDefault();
-  event.stopPropagation();
-  const dropzone = document.getElementById('dropzoneEmpty');
-  if (dropzone) dropzone.classList.add('border-primary', 'bg-surface-container-high');
-}
+  hideStatusAlert();
 
-function handleDragLeave(event) {
-  event.preventDefault();
-  event.stopPropagation();
-  const dropzone = document.getElementById('dropzoneEmpty');
-  if (dropzone) dropzone.classList.remove('border-primary', 'bg-surface-container-high');
-}
-
-function handleDrop(event) {
-  event.preventDefault();
-  event.stopPropagation();
-  const dropzone = document.getElementById('dropzoneEmpty');
-  if (dropzone) dropzone.classList.remove('border-primary', 'bg-surface-container-high');
-
-  const files = event.dataTransfer.files;
-  if (files && files.length > 0) {
-    const fileInput = document.getElementById('receiptFileInput');
-    if (fileInput) fileInput.files = files;
-    processUploadedFile(files[0]);
-  }
-}
-
-function processUploadedFile(file) {
-  const errorAlert = document.getElementById('uploadErrorAlert');
-  const errorMsg = document.getElementById('uploadErrorMessage');
-
-  if (!file) return;
-
-  // Validate allowed extensions and mime types
-  const allowedExtensions = ['png', 'jpg', 'jpeg', 'pdf'];
-  const ext = file.name.split('.').pop().toLowerCase();
-  const isValidExt = allowedExtensions.includes(ext);
-
-  // Validate size: 10MB maximum
-  const maxSize = 10 * 1024 * 1024; // 10MB
-  if (!isValidExt) {
-    showUploadError('Invalid file type. Please upload a PNG, JPG, or PDF file.');
-    selectedFile = null;
-    return;
-  }
-
-  if (file.size > maxSize) {
-    showUploadError('File exceeds 10MB limit. Please upload a smaller file or screenshot.');
-    selectedFile = null;
-    return;
-  }
-
-  // Clear any errors
-  if (errorAlert) errorAlert.classList.add('hidden');
-
-  selectedFile = file;
-
-  // Show uploaded state
-  const dropEmpty = document.getElementById('dropzoneEmpty');
-  const dropUploaded = document.getElementById('dropzoneUploaded');
-  const nameEl = document.getElementById('uploadedFileName');
-  const sizeEl = document.getElementById('uploadedFileSize');
-
-  if (nameEl) nameEl.innerText = file.name;
-  if (sizeEl) {
-    const sizeKB = (file.size / 1024).toFixed(0);
-    const sizeFormatted = sizeKB > 1024 ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : sizeKB + ' KB';
-    sizeEl.innerText = `${sizeFormatted} • Ready to submit`;
-  }
-
-  if (dropEmpty) dropEmpty.classList.add('hidden');
-  if (dropUploaded) dropUploaded.classList.remove('hidden');
-}
-
-function showUploadError(msg) {
-  const errorAlert = document.getElementById('uploadErrorAlert');
-  const errorMsg = document.getElementById('uploadErrorMessage');
-  if (errorMsg) errorMsg.innerText = msg;
-  if (errorAlert) errorAlert.classList.remove('hidden');
-}
-
-// -----------------------------------------------------------------------------
-// 7. FORM SUBMISSION (WITH FORMSUBMIT.CO SERVICE)
-// -----------------------------------------------------------------------------
-async function handleFormSubmit(event) {
-  event.preventDefault();
-
-  // Validate deceased names
+  // 1. Validate deceased names
   const inputs = document.querySelectorAll('.deceased-input');
   const names = [];
   inputs.forEach(input => {
@@ -299,129 +214,278 @@ async function handleFormSubmit(event) {
   });
 
   if (names.length === 0) {
-    alert('Please enter at least one name of a deceased loved one.');
+    showStatusAlert('Deceased Name Required', 'Please enter at least one name of a deceased loved one.', true);
     const firstInput = document.querySelector('.deceased-input');
     if (firstInput) firstInput.focus();
     return;
   }
 
-  // Validate offering amount (accepts whole numbers, amounts with commas like 1,500 or 50,000)
+  // 2. Validate email
+  const emailInput = document.getElementById('requesterEmail');
+  const emailVal = emailInput ? emailInput.value.trim().toLowerCase() : '';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailVal || !emailRegex.test(emailVal)) {
+    showStatusAlert('Valid Email Required', 'Please provide a valid email address to receive your payment receipt and booking confirmation.', true);
+    if (emailInput) emailInput.focus();
+    return;
+  }
+
+  // 3. Optional Submitter Name & Intention Notes
+  const nameInput = document.getElementById('requesterName');
+  const requesterName = nameInput ? nameInput.value.trim() : '';
+
+  const notesInput = document.getElementById('intentionNotes');
+  const intentionNotes = notesInput ? notesInput.value.trim() : '';
+
+  // 4. Validate offering amount
   const offeringInput = document.getElementById('customOffering');
   const rawAmount = offeringInput ? offeringInput.value.trim() : '';
   const sanitizedAmount = rawAmount.replace(/[₦,\s]/g, '');
   const amountVal = parseFloat(sanitizedAmount);
 
-  if (!rawAmount || isNaN(amountVal) || amountVal <= 0) {
-    alert('Please enter a valid Mass offering amount.');
-    if (offeringInput) {
-      offeringInput.focus();
-      offeringInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+  if (!rawAmount || isNaN(amountVal) || amountVal < 100) {
+    showStatusAlert('Valid Offering Required', 'Please enter a valid Mass offering amount (minimum ₦100).', true);
+    if (offeringInput) offeringInput.focus();
     return;
   }
 
-  // Validate receipt
-  if (!selectedFile) {
-    showUploadError('Please upload your bank transfer receipt or payment screenshot before submitting.');
-    const uploadSection = document.getElementById('dropzoneEmpty');
-    if (uploadSection) uploadSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
+  // Store validated booking draft for review
+  currentBookingDraft = {
+    deceasedNames: names,
+    requesterEmail: emailVal,
+    requesterName: requesterName || 'Parishioner',
+    intentionNotes: intentionNotes,
+    offeringAmount: amountVal
+  };
+
+  // Open Step 2: Review Booking Modal
+  openReviewModal(currentBookingDraft);
+}
+
+// -----------------------------------------------------------------------------
+// 7. REVIEW BOOKING MODAL (Step 2)
+// -----------------------------------------------------------------------------
+function openReviewModal(draft) {
+  const modal = document.getElementById('bookingReviewModal');
+  const listEl = document.getElementById('reviewDeceasedList');
+  const nameEl = document.getElementById('reviewRequesterName');
+  const emailEl = document.getElementById('reviewRequesterEmail');
+  const amountEl = document.getElementById('reviewAmountTotal');
+  const intentionRow = document.getElementById('reviewIntentionRow');
+  const intentionText = document.getElementById('reviewIntentionText');
+  const proceedBtn = document.getElementById('proceedToPaystackBtn');
+  const proceedBtnText = document.getElementById('proceedBtnText');
+
+  if (!modal) return;
+
+  // Populate souls list
+  if (listEl) {
+    listEl.innerHTML = draft.deceasedNames
+      .map(name => `<li class="flex items-center gap-1.5"><span class="text-secondary text-sm">†</span> <span>${escapeHtml(name)}</span></li>`)
+      .join('');
   }
 
-  // Generate unique Memorial Reference Code
-  const currentYear = new Date().getFullYear();
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const referenceCode = `YCCCI-NOV-${currentYear}-${randomSuffix}`;
+  // Populate submitter details
+  if (nameEl) nameEl.innerText = draft.requesterName || 'Parishioner';
+  if (emailEl) emailEl.innerText = draft.requesterEmail;
+  if (amountEl) amountEl.innerText = `₦${draft.offeringAmount.toLocaleString()} NGN`;
 
-  // Form submission loading state
-  const submitBtn = document.getElementById('submitBtn');
-  const submitBtnText = document.getElementById('submitBtnText');
-  const submitBtnIcon = document.getElementById('submitBtnIcon');
+  // Intention notes
+  if (draft.intentionNotes && draft.intentionNotes.length > 0) {
+    if (intentionText) intentionText.innerText = `“${draft.intentionNotes}”`;
+    if (intentionRow) intentionRow.classList.remove('hidden');
+  } else {
+    if (intentionRow) intentionRow.classList.add('hidden');
+  }
 
-  submitBtn.disabled = true;
-  submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
-  submitBtnText.innerHTML = '<span class="btn-spinner mr-2"></span> Submitting Intention...';
-  if (submitBtnIcon) submitBtnIcon.classList.add('hidden');
+  // Reset button state
+  if (proceedBtn) {
+    proceedBtn.disabled = false;
+    proceedBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+  }
+  if (proceedBtnText) {
+    proceedBtnText.innerText = `PROCEED TO PAYSTACK (₦${draft.offeringAmount.toLocaleString()})`;
+  }
 
-  // Build FormData for FormSubmit.co
-  const formData = new FormData();
-  formData.append('Booking_Reference', referenceCode);
-  formData.append('Deceased_Souls', names.join(', '));
-  formData.append('Total_Souls_Count', names.length.toString());
-  formData.append('Offering_Amount_NGN', '₦' + amountVal.toLocaleString());
-  formData.append('Bank_Paid_To', `${YCCCI_CONFIG.BANK_NAME} - ${YCCCI_CONFIG.ACCOUNT_NUMBER}`);
-  formData.append('Submission_Date', new Date().toLocaleString());
-  formData.append('attachment', selectedFile);
+  modal.classList.add('active-modal');
+  document.body.style.overflow = 'hidden';
+}
 
-  // FormSubmit configuration fields
-  formData.append('_subject', `New Mass Intention: ${names[0]} (${referenceCode})`);
-  formData.append('_template', 'table');
-  formData.append('_captcha', 'false');
+function closeReviewModal() {
+  const modal = document.getElementById('bookingReviewModal');
+  if (modal) {
+    modal.classList.remove('active-modal');
+    document.body.style.overflow = '';
+  }
+}
 
-  // Determine submission endpoint (calls backend /api/submit-intention)
-  let submissionUrl = (YCCCI_CONFIG.API_ENDPOINT && YCCCI_CONFIG.API_ENDPOINT.trim()) || '/api/submit-intention';
+// -----------------------------------------------------------------------------
+// 8. INITIALIZE PAYSTACK TRANSACTION & REDIRECT (Step 3)
+// -----------------------------------------------------------------------------
+async function proceedToPaystackPayment() {
+  if (!currentBookingDraft) return;
+
+  const btn = document.getElementById('proceedToPaystackBtn');
+  const btnText = document.getElementById('proceedBtnText');
+  const btnIcon = document.getElementById('proceedBtnIcon');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+  }
+  if (btnText) {
+    btnText.innerHTML = '<span class="btn-spinner mr-2"></span> Connecting to Paystack...';
+  }
+  if (btnIcon) btnIcon.classList.add('hidden');
 
   try {
-    const response = await fetch(submissionUrl, {
+    const endpoint = (typeof YCCCI_CONFIG !== 'undefined' && YCCCI_CONFIG.API_INIT_PAYMENT)
+      ? YCCCI_CONFIG.API_INIT_PAYMENT
+      : '/api/initialize-payment';
+
+    const response = await fetch(endpoint, {
       method: 'POST',
-      body: formData,
       headers: {
+        'Content-Type': 'application/json',
         'Accept': 'application/json'
-      }
+      },
+      body: JSON.stringify(currentBookingDraft)
     });
 
-    const resData = await response.json().catch(() => null);
+    const data = await response.json().catch(() => null);
 
-    if (response.ok && (!resData || resData.success !== false)) {
-      // Backend & email provider confirmed message accepted!
-      revealSuccessScreen(referenceCode);
+    if (response.ok && data && data.success && data.authorization_url) {
+      // Save local reference for session continuity
+      sessionStorage.setItem('yccci_pending_ref', data.reference);
+      sessionStorage.setItem('yccci_pending_booking', JSON.stringify({
+        bookingReference: data.bookingReference,
+        paystackReference: data.reference,
+        ...currentBookingDraft
+      }));
+
+      // Redirect user to official Paystack Checkout
+      window.location.href = data.authorization_url;
     } else {
-      let errDetails = (resData && resData.message)
-        ? resData.message
-        : 'Submission could not be completed. Please check your internet connection and try again.';
-      alert(`Notice: ${errDetails}`);
-      resetSubmitButton();
+      const errMsg = (data && data.message) ? data.message : 'Unable to connect to Paystack payment gateway.';
+      alert(`Payment Initialization Notice: ${errMsg}`);
+      resetProceedButton();
     }
-  } catch (error) {
-    console.error('Submission error:', error);
-    alert('A network error occurred while submitting your intention. Please check your internet connection and try again.');
-    resetSubmitButton();
+  } catch (err) {
+    console.error('Paystack initialization error:', err);
+    alert('A network connection error occurred while reaching the payment gateway. Please check your internet and try again.');
+    resetProceedButton();
   }
 }
 
-function resetSubmitButton() {
-  const submitBtn = document.getElementById('submitBtn');
-  const submitBtnText = document.getElementById('submitBtnText');
-  const submitBtnIcon = document.getElementById('submitBtnIcon');
+function resetProceedButton() {
+  const btn = document.getElementById('proceedToPaystackBtn');
+  const btnText = document.getElementById('proceedBtnText');
+  const btnIcon = document.getElementById('proceedBtnIcon');
 
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.remove('opacity-75', 'cursor-not-allowed');
   }
-  if (submitBtnText) submitBtnText.innerText = 'SUBMIT MASS INTENTION';
-  if (submitBtnIcon) submitBtnIcon.classList.remove('hidden');
+  if (btnText && currentBookingDraft) {
+    btnText.innerText = `PROCEED TO PAYSTACK (₦${currentBookingDraft.offeringAmount.toLocaleString()})`;
+  }
+  if (btnIcon) btnIcon.classList.remove('hidden');
 }
 
 // -----------------------------------------------------------------------------
-// 8. DEDICATED CLEAN WHITE SUCCESS SCREEN WITH PROGRESSIVE GREEN CHECKMARK
+// 9. VERIFY PAYMENT ON RETURN FROM PAYSTACK (Steps 4, 5, 8)
 // -----------------------------------------------------------------------------
-function revealSuccessScreen(referenceCode) {
+async function checkPaymentReturnUrl() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const reference = urlParams.get('reference') || urlParams.get('trxref');
+
+  if (!reference) return;
+
+  // Show verifying overlay
+  const verifyingOverlay = document.getElementById('verifyingOverlay');
+  if (verifyingOverlay) {
+    verifyingOverlay.classList.add('active-modal');
+  }
+
+  try {
+    const endpoint = (typeof YCCCI_CONFIG !== 'undefined' && YCCCI_CONFIG.API_VERIFY_PAYMENT)
+      ? `${YCCCI_CONFIG.API_VERIFY_PAYMENT}/${encodeURIComponent(reference)}`
+      : `/api/verify-payment/${encodeURIComponent(reference)}`;
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    const data = await response.json().catch(() => null);
+
+    // Remove query params from browser URL cleanly to prevent re-submitting on refresh
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    if (verifyingOverlay) {
+      verifyingOverlay.classList.remove('active-modal');
+    }
+
+    if (response.ok && data && data.success && data.booking) {
+      // Confirmed by backend server & Paystack live!
+      revealSuccessScreen(data.booking);
+    } else {
+      const errMsg = (data && data.message)
+        ? data.message
+        : 'Payment could not be verified. If your account was debited, please contact youngchosenforchrist@gmail.com with reference ' + reference;
+      showStatusAlert('Payment Verification Notice', errMsg, true);
+    }
+  } catch (err) {
+    console.error('Verification error:', err);
+    if (verifyingOverlay) {
+      verifyingOverlay.classList.remove('active-modal');
+    }
+    showStatusAlert('Connection Error', 'Unable to complete server payment verification. Please check your internet connection or contact church administration.', true);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 10. REVEAL DEDICATED SUCCESS SCREEN
+// -----------------------------------------------------------------------------
+function revealSuccessScreen(booking) {
   const successScreen = document.getElementById('successScreen');
   const codeEl = document.getElementById('successReferenceCode');
+  const paystackRefEl = document.getElementById('successPaystackRef');
+  const amountEl = document.getElementById('successAmountPaid');
+  const soulsListEl = document.getElementById('successDeceasedList');
 
-  if (codeEl) codeEl.innerText = referenceCode;
+  if (codeEl) codeEl.innerText = booking.bookingReference || 'YCCCI-NOV';
+  if (paystackRefEl) paystackRefEl.innerText = booking.paystackReference || 'N/A';
+  if (amountEl) {
+    const amt = typeof booking.offeringAmount === 'number'
+      ? '₦' + booking.offeringAmount.toLocaleString() + ' NGN'
+      : String(booking.offeringAmount || '₦0');
+    amountEl.innerText = amt;
+  }
+
+  if (soulsListEl && Array.isArray(booking.deceasedNames)) {
+    soulsListEl.innerHTML = booking.deceasedNames
+      .map(name => `<li class="flex items-center gap-1.5"><span class="text-secondary font-bold">†</span> <strong class="text-on-surface">${escapeHtml(name)}</strong></li>`)
+      .join('');
+  }
 
   if (successScreen) {
     successScreen.classList.add('active-success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  // Clear session draft
+  sessionStorage.removeItem('yccci_pending_ref');
+  sessionStorage.removeItem('yccci_pending_booking');
 }
 
 function resetFormForNewSubmission() {
   const successScreen = document.getElementById('successScreen');
   if (successScreen) successScreen.classList.remove('active-success');
 
-  // Reset form fields
   const form = document.getElementById('massIntentionForm');
   if (form) form.reset();
 
@@ -444,19 +508,21 @@ function resetFormForNewSubmission() {
     deceasedCount = 1;
   }
 
-  // Reset file upload state
-  selectedFile = null;
-  const dropEmpty = document.getElementById('dropzoneEmpty');
-  const dropUploaded = document.getElementById('dropzoneUploaded');
-  const errorAlert = document.getElementById('uploadErrorAlert');
-  if (dropEmpty) dropEmpty.classList.remove('hidden');
-  if (dropUploaded) dropUploaded.classList.add('hidden');
-  if (errorAlert) errorAlert.classList.add('hidden');
+  // Clear presets
+  document.querySelectorAll('.offering-pill').forEach(btn => btn.classList.remove('selected'));
 
-  // Clear custom offering amount input
-  const customInput = document.getElementById('customOffering');
-  if (customInput) customInput.value = '';
-
-  resetSubmitButton();
+  currentBookingDraft = null;
+  hideStatusAlert();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Helper: Escape HTML strings
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

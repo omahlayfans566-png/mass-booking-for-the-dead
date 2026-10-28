@@ -2,175 +2,101 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const multer = require('multer');
 const rateLimit = require('express-rate-limit');
-const { Resend } = require('resend');
-const nodemailer = require('nodemailer');
+
+const store = require('./lib/store');
+const paystack = require('./lib/paystack');
+const { sendBookingConfirmationEmail } = require('./lib/email');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for cross-origin requests (e.g., from Render Static Site to Render Web Service)
+// Recipient email configuration (defaults to youngchosenforchrist@gmail.com)
+const RECIPIENT_EMAIL = process.env.MASS_BOOKING_EMAIL || process.env.RECIPIENT_EMAIL || 'youngchosenforchrist@gmail.com';
+
+// Enable CORS
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-paystack-signature']
 }));
 
-app.use(express.json());
+// Capture raw body for Paystack HMAC SHA512 webhook signature verification
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiter: max 15 intention submissions per 15 minutes per IP to prevent spam
-const submissionLimiter = rateLimit({
+// Rate limiter: max 30 payment initializations per 15 mins per IP
+const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 30,
   message: {
     success: false,
-    message: 'Too many intention requests from this connection. Please wait a few minutes and try again.'
+    message: 'Too many requests from this connection. Please wait a few minutes and try again.'
   },
   standardHeaders: true,
   legacyHeaders: false
 });
 
-// Configure Multer for IN-MEMORY storage only (NO disk/database saving as strictly required)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB maximum
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
-    const allowedExts = ['.png', '.jpg', '.jpeg', '.pdf'];
-    const ext = path.extname(file.originalname).toLowerCase();
-
-    if (allowedMimes.includes(file.mimetype) || allowedExts.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only PNG, JPG, JPEG, and PDF files are accepted.'));
-    }
-  }
-});
-
-// Helper: Build Dignified Catholic HTML Email
-function buildMassIntentionHtml({ bookingReference, deceasedNames, totalSouls, offeringAmount, submissionDate, fileName, fileSizeFormatted }) {
-  const deceasedListHtml = deceasedNames
-    .map(name => `<li style="padding: 4px 0; font-size: 15px; color: #1B1B20;">✝ <strong>${name}</strong></li>`)
-    .join('');
-
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="utf-8">
-    <title>New Mass Intention Booking — YCCCI</title>
-  </head>
-  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FBF8FF; margin: 0; padding: 24px; color: #1B1B20;">
-    <table width="100%" border="0" cellspacing="0" cellpadding="0">
-      <tr>
-        <td align="center">
-          <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 12px; border: 1px solid #DFD7C7; overflow: hidden; box-shadow: 0 4px 12px rgba(77, 0, 17, 0.05);">
-            <!-- Header Band -->
-            <tr>
-              <td style="background-color: #4D0011; padding: 24px 32px; text-align: center;">
-                <h1 style="color: #FFFFFF; margin: 0 0 6px 0; font-size: 22px; font-weight: 600; letter-spacing: 0.02em;">
-                  Young and Chosen for Christ
-                </h1>
-                <p style="color: #FFDADA; margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;">
-                  November Mass Intentions for the Faithful Departed
-                </p>
-              </td>
-            </tr>
-
-            <!-- Content Area -->
-            <tr>
-              <td style="padding: 32px;">
-                <div style="background-color: #FDFBF7; border-left: 4px solid #775A19; padding: 12px 16px; margin-bottom: 24px;">
-                  <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #775A19; font-weight: bold; display: block;">
-                    Memorial Submission Reference
-                  </span>
-                  <strong style="font-size: 18px; color: #4D0011; font-family: monospace;">
-                    ${bookingReference}
-                  </strong>
-                </div>
-
-                <h2 style="font-size: 17px; color: #4D0011; margin: 0 0 12px 0; border-bottom: 1px solid #DFD7C7; padding-bottom: 8px;">
-                  Names of the Faithful Departed (${totalSouls})
-                </h2>
-                <ul style="list-style: none; padding-left: 0; margin: 0 0 24px 0;">
-                  ${deceasedListHtml}
-                </ul>
-
-                <h2 style="font-size: 17px; color: #4D0011; margin: 0 0 12px 0; border-bottom: 1px solid #DFD7C7; padding-bottom: 8px;">
-                  Stipend & Offering Details
-                </h2>
-                <table width="100%" style="font-size: 14px; margin-bottom: 24px;">
-                  <tr>
-                    <td style="padding: 6px 0; color: #554243; width: 45%;">Offering Amount:</td>
-                    <td style="padding: 6px 0; font-weight: bold; color: #1B1B20; font-size: 16px;">${offeringAmount}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 6px 0; color: #554243;">Bank Deposited To:</td>
-                    <td style="padding: 6px 0; color: #1B1B20;">Zenith Bank — 1228821057</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 6px 0; color: #554243;">Account Name:</td>
-                    <td style="padding: 6px 0; color: #1B1B20;">Young and Chosen for Christ</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 6px 0; color: #554243;">Submission Date & Time:</td>
-                    <td style="padding: 6px 0; color: #1B1B20;">${submissionDate}</td>
-                  </tr>
-                </table>
-
-                <div style="background-color: #F5F2F9; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
-                  <strong style="font-size: 13px; color: #4D0011; display: block; margin-bottom: 4px;">
-                    📎 Proof of Payment Attached
-                  </strong>
-                  <span style="font-size: 13px; color: #554243;">
-                    Filename: <strong>${fileName}</strong> (${fileSizeFormatted})
-                  </span>
-                  <p style="margin: 6px 0 0 0; font-size: 12px; color: #887272;">
-                    The original transfer receipt uploaded by the requester is attached directly to this email.
-                  </p>
-                </div>
-
-                <p style="font-size: 12px; color: #887272; line-height: 1.5; margin: 0; text-align: center; border-top: 1px solid #DFD7C7; padding-top: 16px;">
-                  Requiem aeternam dona eis, Domine, et lux perpetua luceat eis.<br>
-                  <em>Submitted via the official YCCCI Mass Booking Memorial Portal.</em>
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-  </html>
-  `;
+// Helper: Sanitize booking object before returning to client (prevents exposing internal server fields)
+function sanitizeBooking(booking) {
+  if (!booking) return null;
+  return {
+    bookingReference: booking.bookingReference,
+    paystackReference: booking.paystackReference,
+    deceasedNames: booking.deceasedNames,
+    totalSouls: (booking.deceasedNames || []).length,
+    offeringAmount: booking.offeringAmount,
+    currency: booking.currency || 'NGN',
+    requesterName: booking.requesterName,
+    requesterEmail: booking.requesterEmail,
+    intentionNotes: booking.intentionNotes || '',
+    paymentStatus: booking.paymentStatus,
+    paidAt: booking.paidAt || null,
+    channel: booking.channel || null,
+    emailDelivered: !!booking.emailDelivered
+  };
 }
 
 // -----------------------------------------------------------------------------
-// POST /api/submit-intention (Zero database saving: processes strictly in-memory)
+// 1. GET /api/config - Safe public configuration for frontend
 // -----------------------------------------------------------------------------
-app.post('/api/submit-intention', submissionLimiter, upload.single('attachment'), async (req, res) => {
-  try {
-    // 1. Spam check (honeypot)
-    if (req.body.website_trap || req.body._honeypot) {
-      console.warn('Spam trap triggered.');
-      return res.status(400).json({ success: false, message: 'Invalid submission.' });
-    }
+app.get('/api/config', (req, res) => {
+  res.json({
+    success: true,
+    paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || '',
+    currency: 'NGN',
+    recipientEmail: RECIPIENT_EMAIL,
+    environment: (process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_live_') ? 'live' : 'test'
+  });
+});
 
-    // 2. Validate deceased names
+// -----------------------------------------------------------------------------
+// 2. POST /api/initialize-payment - Securely initialize Paystack transaction
+// -----------------------------------------------------------------------------
+app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
+  try {
+    const {
+      deceasedNames: rawDeceased,
+      offeringAmount: rawAmount,
+      requesterEmail,
+      requesterName,
+      intentionNotes
+    } = req.body;
+
+    // 1. Validate deceased names
     let deceasedNames = [];
-    if (req.body['deceasedName[]']) {
-      const raw = req.body['deceasedName[]'];
-      deceasedNames = Array.isArray(raw) ? raw : [raw];
-    } else if (req.body.Deceased_Souls) {
-      deceasedNames = req.body.Deceased_Souls.split(',').map(s => s.trim());
+    if (Array.isArray(rawDeceased)) {
+      deceasedNames = rawDeceased;
+    } else if (typeof rawDeceased === 'string') {
+      deceasedNames = rawDeceased.split(',').map(s => s.trim());
     }
 
     deceasedNames = deceasedNames
-      .map(name => typeof name === 'string' ? name.trim() : '')
+      .map(name => (typeof name === 'string' ? name.trim() : ''))
       .filter(name => name.length > 0);
 
     if (deceasedNames.length === 0) {
@@ -180,196 +106,455 @@ app.post('/api/submit-intention', submissionLimiter, upload.single('attachment')
       });
     }
 
-    // 3. Validate offering amount
-    const rawOffering = req.body.offeringAmount || req.body.Offering_Amount_NGN || '';
-    const sanitizedOffering = String(rawOffering).replace(/[₦,\s]/g, '');
-    const numericOffering = parseFloat(sanitizedOffering);
-
-    if (isNaN(numericOffering) || numericOffering <= 0) {
+    // 2. Validate requester email (mandatory for Paystack transaction)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!requesterEmail || !emailRegex.test(String(requesterEmail).trim())) {
       return res.status(400).json({
         success: false,
-        message: 'Please enter a valid Mass offering amount.'
+        message: 'Please enter a valid email address to receive your payment receipt and booking confirmation.'
+      });
+    }
+    const cleanEmail = String(requesterEmail).trim().toLowerCase();
+
+    // 3. Validate and sanitize offering amount
+    const sanitizedAmountStr = String(rawAmount || '').replace(/[₦,\s]/g, '');
+    const numericAmount = parseFloat(sanitizedAmountStr);
+
+    if (isNaN(numericAmount) || numericAmount < 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid Mass offering amount (minimum ₦100).'
       });
     }
 
-    const formattedOffering = '₦' + numericOffering.toLocaleString();
+    // Convert to kobo (minor currency unit: 1 NGN = 100 kobo)
+    const amountInKobo = Math.round(numericAmount * 100);
 
-    // 4. Validate payment proof file
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please upload proof of payment (bank transfer receipt or screenshot).'
-      });
-    }
-
-    // 5. Generate / parse booking reference and timestamp
+    // 4. Generate unique Memorial Booking Reference & Paystack Reference
     const currentYear = new Date().getFullYear();
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const bookingReference = req.body.Booking_Reference || `YCCCI-NOV-${currentYear}-${randomSuffix}`;
-    const submissionDate = new Date().toLocaleString('en-US', {
-      dateStyle: 'full',
-      timeStyle: 'medium'
-    });
+    const bookingReference = `YCCCI-NOV-${currentYear}-${randomSuffix}`;
+    const paystackReference = `YCCCI-PAY-${Date.now()}-${randomSuffix}`;
 
-    const fileSizeKB = (req.file.size / 1024).toFixed(0);
-    const fileSizeFormatted = fileSizeKB > 1024 ? (req.file.size / (1024 * 1024)).toFixed(1) + ' MB' : fileSizeKB + ' KB';
+    // Determine callback URL
+    const baseUrl = process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== ''
+      ? process.env.FRONTEND_URL.trim().replace(/\/+$/, '')
+      : `${req.protocol}://${req.get('host')}`;
+    const callbackUrl = `${baseUrl}/?reference=${encodeURIComponent(paystackReference)}`;
 
-    // 6. Recipient: strictly youngchosenforchrist@gmail.com
-    const recipientEmail = process.env.RECIPIENT_EMAIL || 'youngchosenforchrist@gmail.com';
-    const emailSubject = `New Mass Intention Booking — YCCCI [${bookingReference}]`;
-
-    const htmlContent = buildMassIntentionHtml({
-      bookingReference,
-      deceasedNames,
-      totalSouls: deceasedNames.length,
-      offeringAmount: formattedOffering,
-      submissionDate,
-      fileName: req.file.originalname,
-      fileSizeFormatted
-    });
-
-    const textContent = `New Mass Intention Booking — YCCCI\n\nReference: ${bookingReference}\nDeceased Souls:\n${deceasedNames.map(n => `- ${n}`).join('\n')}\nOffering Amount: ${formattedOffering}\nBank: Zenith Bank (1228821057)\nDate: ${submissionDate}\nReceipt attached: ${req.file.originalname} (${fileSizeFormatted})`;
-
-    // 7. Dispatch Email via Resend (or SMTP fallback if configured)
-    let emailSent = false;
-    let providerName = '';
-
-    // Primary: Resend API
-    if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '') {
-      try {
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        const fromAddress = process.env.SENDER_EMAIL || 'YCCCI Mass Booking <onboarding@resend.dev>';
-
-        const resendResult = await resend.emails.send({
-          from: fromAddress,
-          to: recipientEmail,
-          subject: emailSubject,
-          html: htmlContent,
-          text: textContent,
-          attachments: [
-            {
-              filename: req.file.originalname,
-              content: req.file.buffer
-            }
-          ]
-        });
-
-        if (resendResult.error) {
-          throw new Error(resendResult.error.message || 'Resend API returned an error');
+    // Build custom metadata for Paystack
+    const metadata = {
+      booking_reference: bookingReference,
+      deceased_names: deceasedNames,
+      requester_email: cleanEmail,
+      requester_name: (requesterName || '').trim() || 'Parishioner',
+      intention_notes: (intentionNotes || '').trim(),
+      offering_amount: numericAmount,
+      currency: 'NGN',
+      custom_fields: [
+        {
+          display_name: 'Memorial Reference',
+          variable_name: 'booking_reference',
+          value: bookingReference
+        },
+        {
+          display_name: 'Deceased Souls',
+          variable_name: 'deceased_souls',
+          value: deceasedNames.slice(0, 5).join(', ') + (deceasedNames.length > 5 ? ` (+${deceasedNames.length - 5} more)` : '')
+        },
+        {
+          display_name: 'Offering Amount',
+          variable_name: 'offering_amount',
+          value: `₦${numericAmount.toLocaleString('en-NG')}`
         }
+      ]
+    };
 
-        emailSent = true;
-        providerName = 'Resend';
-        console.log(`✅ Mass Intention email successfully dispatched via Resend to ${recipientEmail} [${bookingReference}]`);
-      } catch (resendErr) {
-        console.error('❌ Resend API dispatch failed:', resendErr.message);
-        throw resendErr;
-      }
-    }
-    // Alternative: SMTP / Gmail App Password
-    else if (process.env.GMAIL_USER || process.env.SMTP_HOST) {
-      try {
-        const transporter = nodemailer.createTransport(
-          process.env.GMAIL_USER
-            ? {
-                service: 'gmail',
-                auth: {
-                  user: process.env.GMAIL_USER,
-                  pass: process.env.GMAIL_APP_PASSWORD
-                }
-              }
-            : {
-                host: process.env.SMTP_HOST,
-                port: parseInt(process.env.SMTP_PORT || '587', 10),
-                secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-                auth: {
-                  user: process.env.SMTP_USER,
-                  pass: process.env.SMTP_PASS
-                }
-              }
-        );
+    // 5. Initialize transaction with Paystack official API
+    const paystackResult = await paystack.initializeTransaction({
+      email: cleanEmail,
+      amountInKobo,
+      reference: paystackReference,
+      callbackUrl,
+      metadata
+    });
 
-        await transporter.sendMail({
-          from: process.env.SENDER_EMAIL || process.env.GMAIL_USER || 'intentions@youngandchosenforchrist.com',
-          to: recipientEmail,
-          subject: emailSubject,
-          html: htmlContent,
-          text: textContent,
-          attachments: [
-            {
-              filename: req.file.originalname,
-              content: req.file.buffer,
-              contentType: req.file.mimetype
-            }
-          ]
-        });
+    // 6. Record pending booking in persistent store
+    const bookingRecord = {
+      bookingReference,
+      paystackReference,
+      deceasedNames,
+      offeringAmount: numericAmount,
+      amountInKobo,
+      currency: 'NGN',
+      requesterEmail: cleanEmail,
+      requesterName: (requesterName || '').trim() || 'Parishioner',
+      intentionNotes: (intentionNotes || '').trim(),
+      paymentStatus: 'pending',
+      emailDelivered: false,
+      createdAt: new Date().toISOString()
+    };
 
-        emailSent = true;
-        providerName = 'SMTP';
-        console.log(`✅ Mass Intention email successfully dispatched via SMTP to ${recipientEmail} [${bookingReference}]`);
-      } catch (smtpErr) {
-        console.error('❌ SMTP dispatch failed:', smtpErr.message);
-        throw smtpErr;
-      }
-    } else {
-      console.warn('⚠️ No email provider configured! Set RESEND_API_KEY in Render environment variables.');
-      return res.status(503).json({
-        success: false,
-        message: 'The email service is awaiting administrator configuration. Please configure RESEND_API_KEY in Render environment variables.'
-      });
-    }
+    store.saveBooking(bookingRecord);
 
-    // Success response: confirmed only after provider accepted message
+    console.log(`[Paystack Init] Created pending booking ${bookingReference} (${paystackReference}) for ${cleanEmail} - ₦${numericAmount.toLocaleString()}`);
+
     return res.status(200).json({
       success: true,
-      message: 'Your Mass intention request has been submitted successfully.',
-      reference: bookingReference,
-      provider: providerName
+      authorization_url: paystackResult.authorization_url,
+      access_code: paystackResult.access_code,
+      reference: paystackReference,
+      bookingReference
     });
 
   } catch (error) {
-    console.error('Submission error:', error);
+    console.error('[Paystack Init Error]:', error.message);
     return res.status(500).json({
       success: false,
-      message: error.message || 'An error occurred while sending your Mass intention email. Please try again.'
+      message: error.message || 'Unable to initialize Paystack payment. Please try again.'
     });
   }
 });
 
-// Health check endpoint
+// -----------------------------------------------------------------------------
+// 3. GET /api/verify-payment/:reference - Verify payment on server & trigger email
+// -----------------------------------------------------------------------------
+app.get('/api/verify-payment/:reference', async (req, res) => {
+  try {
+    const { reference } = req.params;
+    if (!reference) {
+      return res.status(400).json({ success: false, message: 'Transaction reference is required.' });
+    }
+
+    // Retrieve or instantiate booking record
+    let booking = store.getBooking(reference);
+
+    // If already verified and confirmed as paid (e.g. by webhook or previous verification)
+    if (booking && booking.paymentStatus === 'paid') {
+      // If email was not yet delivered (e.g. earlier network blip), retry delivery safely
+      if (!booking.emailDelivered) {
+        try {
+          const emailResult = await sendBookingConfirmationEmail(booking);
+          booking = store.updateBooking(reference, {
+            emailDelivered: true,
+            emailSentAt: new Date().toISOString(),
+            emailProvider: emailResult.provider,
+            emailError: null
+          });
+        } catch (emailErr) {
+          console.error(`⚠️ [Verify] Email delivery pending:`, emailErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        alreadyConfirmed: true,
+        message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
+        booking: sanitizeBooking(booking)
+      });
+    }
+
+    // Verify transaction with Paystack API
+    const tx = await paystack.verifyTransaction(reference);
+
+    // Transaction must exist and have status 'success'
+    if (!tx || tx.status !== 'success') {
+      const txStatus = tx ? tx.status : 'unknown';
+      if (booking) {
+        store.updateBooking(reference, { paymentStatus: txStatus });
+      }
+      return res.status(400).json({
+        success: false,
+        paymentStatus: txStatus,
+        message: `Payment status is '${txStatus}'. A Mass booking can only be confirmed after successful payment.`
+      });
+    }
+
+    // Validate currency matches NGN
+    if (String(tx.currency).toUpperCase() !== 'NGN') {
+      return res.status(400).json({
+        success: false,
+        message: `Currency mismatch. Expected NGN but received ${tx.currency}.`
+      });
+    }
+
+    // Reconstruct booking data if missing in memory (e.g. from Paystack metadata)
+    if (!booking) {
+      const meta = tx.metadata || {};
+      booking = {
+        bookingReference: meta.booking_reference || `YCCCI-NOV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        paystackReference: reference,
+        deceasedNames: meta.deceased_names || ['Departed Soul'],
+        offeringAmount: meta.offering_amount || (tx.amount / 100),
+        amountInKobo: tx.amount,
+        currency: tx.currency,
+        requesterEmail: (tx.customer && tx.customer.email) || meta.requester_email || '',
+        requesterName: meta.requester_name || 'Parishioner',
+        intentionNotes: meta.intention_notes || '',
+        paymentStatus: 'paid',
+        paidAt: tx.paid_at || new Date().toISOString(),
+        channel: tx.channel,
+        emailDelivered: false,
+        createdAt: tx.created_at || new Date().toISOString()
+      };
+      store.saveBooking(booking);
+    }
+
+    // Validate amount matches expected booking amount
+    if (booking.amountInKobo && tx.amount !== booking.amountInKobo) {
+      console.error(`Amount mismatch: expected ${booking.amountInKobo} kobo, got ${tx.amount} kobo`);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment amount mismatch. Please contact support.'
+      });
+    }
+
+    // Mark as PAID
+    const updates = {
+      paymentStatus: 'paid',
+      paidAt: tx.paid_at || new Date().toISOString(),
+      channel: tx.channel || 'paystack'
+    };
+    booking = store.updateBooking(reference, updates);
+
+    // IDEMPOTENCY: Check if confirmation email was already dispatched
+    if (booking.emailDelivered) {
+      console.log(`[Verify] Booking ${booking.bookingReference} was already confirmed and email sent. Idempotent return.`);
+      return res.status(200).json({
+        success: true,
+        alreadyConfirmed: true,
+        message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
+        booking: sanitizeBooking(booking)
+      });
+    }
+
+    // Send confirmation email to youngchosenforchrist@gmail.com strictly after verification
+    try {
+      const emailResult = await sendBookingConfirmationEmail(booking);
+      booking = store.updateBooking(reference, {
+        emailDelivered: true,
+        emailSentAt: new Date().toISOString(),
+        emailProvider: emailResult.provider,
+        emailError: null
+      });
+      console.log(`✅ [Verify] Confirmation email successfully delivered for booking ${booking.bookingReference}`);
+    } catch (emailErr) {
+      // Payment remains CONFIRMED, but record email delivery failure for retry
+      console.error(`⚠️ [Verify] Payment confirmed, but email dispatch failed for ${booking.bookingReference}:`, emailErr.message);
+      booking = store.updateBooking(reference, {
+        emailDelivered: false,
+        emailError: emailErr.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
+      booking: sanitizeBooking(booking)
+    });
+
+  } catch (error) {
+    console.error('[Verify Error]:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Payment verification failed. Please check your reference and try again.'
+    });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 4. POST /api/webhook/paystack - Official Paystack Webhook Handler (HMAC SHA512)
+// -----------------------------------------------------------------------------
+app.post('/api/webhook/paystack', async (req, res) => {
+  try {
+    const signature = req.headers['x-paystack-signature'];
+    if (!signature) {
+      console.warn('⚠️ Webhook received without x-paystack-signature header.');
+      return res.status(401).json({ received: false, message: 'Missing signature' });
+    }
+
+    // Verify HMAC SHA512 signature using PAYSTACK_SECRET_KEY
+    const isValid = paystack.verifyWebhookSignature(req.rawBody, signature);
+    if (!isValid) {
+      console.warn('❌ Webhook received with invalid signature.');
+      return res.status(401).json({ received: false, message: 'Invalid signature' });
+    }
+
+    const event = req.body;
+    console.log(`[Webhook Event Received]: ${event.event}`);
+
+    // Process 'charge.success'
+    if (event.event === 'charge.success') {
+      const data = event.data;
+      const reference = data.reference;
+
+      if (!reference) {
+        return res.status(200).json({ received: true });
+      }
+
+      // Check status & currency
+      if (data.status !== 'success' || String(data.currency).toUpperCase() !== 'NGN') {
+        console.warn(`Webhook charge.success skipped: status=${data.status}, currency=${data.currency}`);
+        return res.status(200).json({ received: true });
+      }
+
+      // Find or recreate booking
+      let booking = store.getBooking(reference);
+      if (!booking) {
+        const meta = data.metadata || {};
+        booking = {
+          bookingReference: meta.booking_reference || `YCCCI-NOV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          paystackReference: reference,
+          deceasedNames: meta.deceased_names || ['Departed Soul'],
+          offeringAmount: meta.offering_amount || (data.amount / 100),
+          amountInKobo: data.amount,
+          currency: data.currency,
+          requesterEmail: (data.customer && data.customer.email) || meta.requester_email || '',
+          requesterName: meta.requester_name || 'Parishioner',
+          intentionNotes: meta.intention_notes || '',
+          paymentStatus: 'paid',
+          paidAt: data.paid_at || new Date().toISOString(),
+          channel: data.channel,
+          emailDelivered: false,
+          createdAt: data.created_at || new Date().toISOString()
+        };
+        store.saveBooking(booking);
+      } else {
+        // Validate amount matches
+        if (booking.amountInKobo && data.amount !== booking.amountInKobo) {
+          console.error(`Webhook amount mismatch for ${reference}: expected ${booking.amountInKobo}, got ${data.amount}`);
+          return res.status(200).json({ received: true, error: 'Amount mismatch' });
+        }
+
+        booking = store.updateBooking(reference, {
+          paymentStatus: 'paid',
+          paidAt: data.paid_at || new Date().toISOString(),
+          channel: data.channel
+        });
+      }
+
+      // IDEMPOTENCY: Check if confirmation email was already dispatched
+      if (booking.emailDelivered) {
+        console.log(`[Webhook] Booking ${booking.bookingReference} already confirmed and email dispatched. Skipping duplicate email.`);
+        return res.status(200).json({ received: true, message: 'Already processed' });
+      }
+
+      // Send email strictly after payment verification
+      try {
+        const emailResult = await sendBookingConfirmationEmail(booking);
+        store.updateBooking(reference, {
+          emailDelivered: true,
+          emailSentAt: new Date().toISOString(),
+          emailProvider: emailResult.provider,
+          emailError: null
+        });
+        console.log(`✅ [Webhook] Confirmation email successfully delivered to ${RECIPIENT_EMAIL} [${booking.bookingReference}]`);
+      } catch (emailErr) {
+        console.error(`⚠️ [Webhook] Email dispatch failed for ${booking.bookingReference}:`, emailErr.message);
+        store.updateBooking(reference, {
+          emailDelivered: false,
+          emailError: emailErr.message
+        });
+      }
+    }
+
+    // Always acknowledge 200 OK to Paystack
+    return res.status(200).json({ received: true });
+
+  } catch (error) {
+    console.error('[Webhook Processing Error]:', error.message);
+    return res.status(500).json({ received: false, error: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 5. POST /api/admin/retry-email/:reference - Safe email re-delivery for paid booking
+// -----------------------------------------------------------------------------
+app.post('/api/admin/retry-email/:reference', async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const booking = store.getBooking(reference);
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking reference not found.' });
+    }
+
+    if (booking.paymentStatus !== 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot send confirmation email for an unpaid booking.'
+      });
+    }
+
+    const emailResult = await sendBookingConfirmationEmail(booking);
+    const updated = store.updateBooking(reference, {
+      emailDelivered: true,
+      emailSentAt: new Date().toISOString(),
+      emailProvider: emailResult.provider,
+      emailError: null
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Confirmation email re-dispatched successfully to ${RECIPIENT_EMAIL} via ${emailResult.provider}.`,
+      booking: sanitizeBooking(updated)
+    });
+
+  } catch (error) {
+    console.error('[Admin Retry Email Error]:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to re-dispatch email.'
+    });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 6. GET /api/health - Diagnostic endpoint
+// -----------------------------------------------------------------------------
 app.get('/api/health', (req, res) => {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
+  const isLive = secretKey.startsWith('sk_live_');
+  const isTest = secretKey.startsWith('sk_test_');
+
   res.json({
     status: 'ok',
-    recipient: process.env.RECIPIENT_EMAIL || 'youngchosenforchrist@gmail.com',
-    resendConfigured: !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '')
+    timestamp: new Date().toISOString(),
+    recipientEmail: RECIPIENT_EMAIL,
+    paystackConfigured: !!secretKey,
+    paystackEnvironment: isLive ? 'LIVE' : (isTest ? 'TEST' : 'UNCONFIGURED'),
+    resendConfigured: !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== ''),
+    smtpConfigured: !!(process.env.GMAIL_USER || process.env.SMTP_HOST),
+    currency: 'NGN'
   });
 });
 
-// Serve static frontend files from project root
+// Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
-// Global error handling middleware for Multer and validation errors
+// Global error handling middleware
 app.use((err, req, res, next) => {
   if (err) {
     console.error('Handled Error:', err.message);
     return res.status(400).json({
       success: false,
-      message: err.message || 'An error occurred during file upload or form processing.'
+      message: err.message || 'An error occurred during request processing.'
     });
   }
   next();
 });
 
-// Fallback to index.html for root GET route
+// Fallback to index.html for client-side navigation
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
   console.log(`\n======================================================`);
-  console.log(`✝ YCCCI Mass Booking Email Dispatcher Running`);
+  console.log(`✝ YCCCI Mass Booking & Paystack Live Payment Server Running`);
   console.log(`  Local URL:        http://localhost:${PORT}`);
-  console.log(`  Recipient Email:  ${process.env.RECIPIENT_EMAIL || 'youngchosenforchrist@gmail.com'}`);
-  console.log(`  Resend Config:    ${process.env.RESEND_API_KEY ? 'Configured' : 'Missing (Set RESEND_API_KEY in Render)'}`);
+  console.log(`  Recipient Email:  ${RECIPIENT_EMAIL}`);
+  console.log(`  Paystack Mode:    ${(process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_live_') ? 'LIVE 🟢' : 'NOT CONFIGURED ⚠️'}`);
+  console.log(`  Email Dispatch:   ${process.env.RESEND_API_KEY ? 'Resend API Configured' : (process.env.GMAIL_USER ? 'SMTP Configured' : 'Awaiting credentials')}`);
   console.log(`======================================================\n`);
 });
