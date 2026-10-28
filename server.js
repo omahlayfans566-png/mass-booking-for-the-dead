@@ -139,7 +139,7 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
     // Determine callback URL
     const baseUrl = process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== ''
       ? process.env.FRONTEND_URL.trim().replace(/\/+$/, '')
-      : `${req.protocol}://${req.get('host')}`;
+      : (req.headers.origin || `${req.protocol}://${req.get('host')}`);
     const callbackUrl = `${baseUrl}/?reference=${encodeURIComponent(paystackReference)}`;
 
     // Build custom metadata for Paystack

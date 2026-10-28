@@ -5,14 +5,29 @@ const YCCCI_CONFIG = {
   // Official Administrator Email where Mass intentions and payment confirmations are delivered
   ADMIN_EMAIL: 'youngchosenforchrist@gmail.com',
 
+  // ---------------------------------------------------------------------------
+  // RENDER BACKEND WEB SERVICE URL
+  // If your website is deployed as a Render Static Site and your backend is
+  // deployed as a separate Render Web Service, enter your backend Web Service URL here:
+  // e.g. BACKEND_URL: 'https://yccci-mass-booking-api.onrender.com'
+  // Leave empty ('') for local development or when backend and frontend are hosted together.
+  // ---------------------------------------------------------------------------
+  BACKEND_URL: '',
+
   // Currency
   CURRENCY: 'NGN',
   CURRENCY_SYMBOL: '₦',
 
-  // Backend API Endpoints
-  API_INIT_PAYMENT: '/api/initialize-payment',
-  API_VERIFY_PAYMENT: '/api/verify-payment',
-  API_CONFIG: '/api/config',
+  // Backend API Endpoints (dynamically prefixed with BACKEND_URL when configured)
+  get API_INIT_PAYMENT() {
+    return (this.BACKEND_URL ? this.BACKEND_URL.replace(/\/+$/, '') : '') + '/api/initialize-payment';
+  },
+  get API_VERIFY_PAYMENT() {
+    return (this.BACKEND_URL ? this.BACKEND_URL.replace(/\/+$/, '') : '') + '/api/verify-payment';
+  },
+  get API_CONFIG() {
+    return (this.BACKEND_URL ? this.BACKEND_URL.replace(/\/+$/, '') : '') + '/api/config';
+  },
 
   // Official Church Bank Details (informational only; payments are processed via Paystack)
   BANK_NAME: 'Zenith Bank',
