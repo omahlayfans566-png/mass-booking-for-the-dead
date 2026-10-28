@@ -9,10 +9,10 @@ const YCCCI_CONFIG = {
   // RENDER BACKEND WEB SERVICE URL
   // If your website is deployed as a Render Static Site and your backend is
   // deployed as a separate Render Web Service, enter your backend Web Service URL here:
-  // e.g. BACKEND_URL: 'https://yccci-mass-booking-api.onrender.com'
+  // e.g. BACKEND_URL: 'https://mass-booking-for-the-dead-api.onrender.com'
   // Leave empty ('') for local development or when backend and frontend are hosted together.
   // ---------------------------------------------------------------------------
-  BACKEND_URL: '',
+  BACKEND_URL: 'https://mass-booking-for-the-dead-api.onrender.com',
 
   // Currency
   CURRENCY: 'NGN',
