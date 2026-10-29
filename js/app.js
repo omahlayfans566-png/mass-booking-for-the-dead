@@ -145,24 +145,7 @@ function removeDeceasedRow(buttonEl) {
 }
 
 // -----------------------------------------------------------------------------
-// 4. OFFERING PRESET AMOUNTS
-// -----------------------------------------------------------------------------
-function selectPresetAmount(amount) {
-  const input = document.getElementById('customOffering');
-  if (input) {
-    input.value = amount.toLocaleString();
-  }
-  // Highlight active pill
-  document.querySelectorAll('.offering-pill').forEach(btn => {
-    btn.classList.remove('selected');
-    if (btn.innerText.includes(amount.toLocaleString())) {
-      btn.classList.add('selected');
-    }
-  });
-}
-
-// -----------------------------------------------------------------------------
-// 5. STATUS ALERT BANNER
+// 4. STATUS ALERT BANNER
 // -----------------------------------------------------------------------------
 function showStatusAlert(title, message, isError = false) {
   const alert = document.getElementById('formStatusAlert');
@@ -238,14 +221,34 @@ function handleFormSubmit(event) {
   const notesInput = document.getElementById('intentionNotes');
   const intentionNotes = notesInput ? notesInput.value.trim() : '';
 
-  // 4. Validate offering amount
+  // 4. Validate custom offering amount
   const offeringInput = document.getElementById('customOffering');
   const rawAmount = offeringInput ? offeringInput.value.trim() : '';
   const sanitizedAmount = rawAmount.replace(/[₦,\s]/g, '');
+
+  if (!rawAmount || sanitizedAmount === '') {
+    showStatusAlert('Offering Amount Required', 'Please enter your Mass offering amount in the field provided.', true);
+    if (offeringInput) offeringInput.focus();
+    return;
+  }
+
+  const isNumeric = /^[0-9]+(\.[0-9]{1,2})?$/.test(sanitizedAmount);
   const amountVal = parseFloat(sanitizedAmount);
 
-  if (!rawAmount || isNaN(amountVal) || amountVal < 100) {
-    showStatusAlert('Valid Offering Required', 'Please enter a valid Mass offering amount (minimum ₦100).', true);
+  if (!isNumeric || isNaN(amountVal)) {
+    showStatusAlert('Invalid Amount', 'Please enter a valid numeric offering amount without special symbols (e.g. 2500 or 5000).', true);
+    if (offeringInput) offeringInput.focus();
+    return;
+  }
+
+  if (amountVal <= 0) {
+    showStatusAlert('Invalid Amount', 'Mass offering amount must be greater than zero.', true);
+    if (offeringInput) offeringInput.focus();
+    return;
+  }
+
+  if (amountVal < 100) {
+    showStatusAlert('Minimum Offering Required', 'The minimum Mass offering amount is ₦100.', true);
     if (offeringInput) offeringInput.focus();
     return;
   }
@@ -508,8 +511,9 @@ function resetFormForNewSubmission() {
     deceasedCount = 1;
   }
 
-  // Clear presets
-  document.querySelectorAll('.offering-pill').forEach(btn => btn.classList.remove('selected'));
+  // Clear custom offering amount
+  const customInput = document.getElementById('customOffering');
+  if (customInput) customInput.value = '';
 
   currentBookingDraft = null;
   hideStatusAlert();

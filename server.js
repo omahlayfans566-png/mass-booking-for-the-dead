@@ -118,12 +118,34 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
 
     // 3. Validate and sanitize offering amount
     const sanitizedAmountStr = String(rawAmount || '').replace(/[₦,\s]/g, '');
+    const isNumericAmount = /^[0-9]+(\.[0-9]{1,2})?$/.test(sanitizedAmountStr);
     const numericAmount = parseFloat(sanitizedAmountStr);
 
-    if (isNaN(numericAmount) || numericAmount < 100) {
+    if (!rawAmount || sanitizedAmountStr === '') {
       return res.status(400).json({
         success: false,
-        message: 'Please enter a valid Mass offering amount (minimum ₦100).'
+        message: 'Please enter your Mass offering amount.'
+      });
+    }
+
+    if (!isNumericAmount || isNaN(numericAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid numeric offering amount.'
+      });
+    }
+
+    if (numericAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mass offering amount must be greater than zero.'
+      });
+    }
+
+    if (numericAmount < 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'The minimum Mass offering amount is ₦100.'
       });
     }
 

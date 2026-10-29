@@ -209,6 +209,71 @@ async function runTests() {
     assert(!appJs.includes('sk_live_'), 'app.js must not contain secret key');
     assert(!configJs.includes('sk_live_'), 'config.js must not contain secret key');
   });
+  // 8. Custom offering amounts validation & kobo conversion logic
+  test('Custom offering amount accepts valid positive amounts and converts correctly to kobo', () => {
+    function validateAndConvertAmount(raw) {
+      const sanitized = String(raw || '').replace(/[₦,\s]/g, '');
+      const isNumeric = /^[0-9]+(\.[0-9]{1,2})?$/.test(sanitized);
+      const val = parseFloat(sanitized);
+
+      if (!raw || sanitized === '') {
+        return { valid: false, error: 'empty' };
+      }
+      if (!isNumeric || isNaN(val)) {
+        return { valid: false, error: 'non_numeric' };
+      }
+      if (val <= 0) {
+        return { valid: false, error: 'non_positive' };
+      }
+      if (val < 100) {
+        return { valid: false, error: 'below_minimum' };
+      }
+      return { valid: true, amount: val, amountInKobo: Math.round(val * 100) };
+    }
+
+    // Valid arbitrary custom amounts
+    const testCases = [
+      { input: '1500', expectedKobo: 150000, expectedVal: 1500 },
+      { input: '3,750', expectedKobo: 375000, expectedVal: 3750 },
+      { input: '₦25,000', expectedKobo: 2500000, expectedVal: 25000 },
+      { input: '100', expectedKobo: 10000, expectedVal: 100 },
+      { input: '500.50', expectedKobo: 50050, expectedVal: 500.5 }
+    ];
+
+    for (const tc of testCases) {
+      const res = validateAndConvertAmount(tc.input);
+      assert.strictEqual(res.valid, true, `Input "${tc.input}" should be valid`);
+      assert.strictEqual(res.amountInKobo, tc.expectedKobo, `Input "${tc.input}" kobo conversion mismatch`);
+      assert.strictEqual(res.amount, tc.expectedVal, `Input "${tc.input}" value mismatch`);
+    }
+
+    // Invalid amounts
+    assert.strictEqual(validateAndConvertAmount('').valid, false, 'Empty should be invalid');
+    assert.strictEqual(validateAndConvertAmount('   ').valid, false, 'Whitespace should be invalid');
+    assert.strictEqual(validateAndConvertAmount('abc').valid, false, 'Alphabetical string should be invalid');
+    assert.strictEqual(validateAndConvertAmount('₦0').valid, false, 'Zero should be invalid');
+    assert.strictEqual(validateAndConvertAmount('-500').valid, false, 'Negative should be invalid');
+    assert.strictEqual(validateAndConvertAmount('50').valid, false, 'Below 100 should be invalid');
+  });
+
+  // 9. Preset buttons completely removed and custom amount input present
+  test('UI verification: preset buttons completely removed and custom input present', () => {
+    const fs = require('fs');
+    const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+    const stylesCss = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+
+    // Ensure preset buttons and pills are removed
+    assert(!indexHtml.includes('selectPresetAmount'), 'index.html must not contain selectPresetAmount');
+    assert(!indexHtml.includes('offering-pill'), 'index.html must not contain offering-pill class');
+    assert(!appJs.includes('selectPresetAmount'), 'app.js must not contain selectPresetAmount');
+    assert(!stylesCss.includes('offering-pill'), 'styles.css must not contain offering-pill styling');
+
+    // Ensure custom amount input exists with proper attributes
+    assert(indexHtml.includes('id="customOffering"'), 'index.html must contain #customOffering');
+    assert(indexHtml.includes('placeholder="Enter your preferred amount"'), 'index.html must have correct placeholder');
+    assert(indexHtml.includes('Your Mass Offering Amount (₦)'), 'index.html must have correct label');
+  });
 
   console.log(`\n======================================================`);
   console.log(`Test Suite Finished: ${passed} Passed, ${failed} Failed`);

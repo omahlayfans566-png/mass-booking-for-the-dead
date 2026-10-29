@@ -338,14 +338,3 @@ body.intro-active {
 #bookingReviewModal.active-modal .review-modal-card {
   transform: scale(1) translateY(0);
 }
-
-.offering-pill {
-  transition: all 0.2s ease;
-}
-
-.offering-pill:hover,
-.offering-pill.selected {
-  background-color: #4D0011 !important;
-  color: #FFFFFF !important;
-  border-color: #4D0011 !important;
-}
