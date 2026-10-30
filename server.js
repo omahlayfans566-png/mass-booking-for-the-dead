@@ -561,13 +561,14 @@ app.post('/api/webhook/paystack', async (req, res) => {
 
 // -----------------------------------------------------------------------------
 // 6. GET /api/health - Diagnostic endpoint
+// Reports actual MongoDB connection status via a live ping, not just env var presence.
 // -----------------------------------------------------------------------------
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
   const isLive = secretKey.startsWith('sk_live_');
   const isTest = secretKey.startsWith('sk_test_');
 
-  // Determine which email provider is active
+  // Email provider detection
   const resendConfigured = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '');
   const brevoUser = process.env.BREVO_SMTP_USER || '';
   const brevoConfigured = !!(
@@ -577,13 +578,29 @@ app.get('/api/health', (req, res) => {
   );
   const gmailConfigured = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
   const smtpConfigured  = !!(process.env.SMTP_HOST);
-  const mongoConfigured = !!(process.env.MONGODB_URI && process.env.MONGODB_URI.trim() !== '');
 
   let activeEmailProvider = 'UNCONFIGURED';
   if (resendConfigured) activeEmailProvider = 'Resend';
   else if (brevoConfigured) activeEmailProvider = 'Brevo SMTP';
   else if (gmailConfigured) activeEmailProvider = 'Gmail SMTP';
   else if (smtpConfigured)  activeEmailProvider = 'Generic SMTP';
+
+  // MongoDB: check env var presence AND perform a live ping
+  const mongoUriPresent = !!(process.env.MONGODB_URI && process.env.MONGODB_URI.trim() !== '');
+  let mongoConnected = false;
+  let mongoError = null;
+
+  if (mongoUriPresent) {
+    try {
+      // getBooking on a non-existent key is a safe read-only probe
+      await store.getBooking('__health_probe__');
+      mongoConnected = true;
+    } catch (err) {
+      mongoError = err.message;
+    }
+  } else {
+    mongoError = 'MONGODB_URI environment variable is not set on this service.';
+  }
 
   res.json({
     status: 'ok',
@@ -596,7 +613,9 @@ app.get('/api/health', (req, res) => {
     resendConfigured,
     brevoConfigured,
     gmailConfigured,
-    mongoConfigured,
+    mongoConfigured: mongoUriPresent,
+    mongoConnected,
+    mongoError: mongoConnected ? null : (mongoError || 'Unknown error'),
     currency: 'NGN'
   });
 });
