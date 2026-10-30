@@ -423,7 +423,7 @@ async function checkPaymentReturnUrl() {
 
     const data = await response.json().catch(() => null);
 
-    // Remove query params from browser URL cleanly to prevent re-submitting on refresh
+    // Remove query params from browser URL to prevent re-verification on refresh
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -432,13 +432,13 @@ async function checkPaymentReturnUrl() {
       verifyingOverlay.classList.remove('active-modal');
     }
 
-    if (response.ok && data && data.success && data.booking) {
-      // Confirmed by backend server & Paystack live!
-      revealSuccessScreen(data.booking);
+    if (response.ok && data && data.success && data.paymentVerified && data.booking) {
+      // Payment verified — reveal success screen with SEND MESSAGE button
+      revealSuccessScreen(data.booking, reference, !!data.alreadyConfirmed);
     } else {
       const errMsg = (data && data.message)
         ? data.message
-        : 'Payment could not be verified. If your account was debited, please contact youngchosenforchrist@gmail.com with reference ' + reference;
+        : 'Payment could not be verified. If your account was debited, please contact younganchoseforchrist@gmail.com with reference ' + reference;
       showStatusAlert('Payment Verification Notice', errMsg, true);
     }
   } catch (err) {
@@ -452,8 +452,10 @@ async function checkPaymentReturnUrl() {
 
 // -----------------------------------------------------------------------------
 // 10. REVEAL DEDICATED SUCCESS SCREEN
+//     Shows payment confirmation details and the SEND MESSAGE button.
+//     alreadyConfirmed = true means the email was previously sent (idempotent revisit).
 // -----------------------------------------------------------------------------
-function revealSuccessScreen(booking) {
+function revealSuccessScreen(booking, paystackReference, alreadyConfirmed) {
   const successScreen = document.getElementById('successScreen');
   const codeEl = document.getElementById('successReferenceCode');
   const paystackRefEl = document.getElementById('successPaystackRef');
@@ -461,7 +463,7 @@ function revealSuccessScreen(booking) {
   const soulsListEl = document.getElementById('successDeceasedList');
 
   if (codeEl) codeEl.innerText = booking.bookingReference || 'YCCCI-NOV';
-  if (paystackRefEl) paystackRefEl.innerText = booking.paystackReference || 'N/A';
+  if (paystackRefEl) paystackRefEl.innerText = booking.paystackReference || paystackReference || 'N/A';
   if (amountEl) {
     const amt = typeof booking.offeringAmount === 'number'
       ? '₦' + booking.offeringAmount.toLocaleString() + ' NGN'
@@ -475,6 +477,48 @@ function revealSuccessScreen(booking) {
       .join('');
   }
 
+  // Store reference for the SEND MESSAGE button to use
+  const ref = paystackReference || booking.paystackReference || '';
+
+  // Inject SEND MESSAGE section above the "Submit another" button
+  const returnBtn = successScreen ? successScreen.querySelector('button[onclick="resetFormForNewSubmission()"]') : null;
+  if (returnBtn) {
+    // Remove any previously injected send section (safe for idempotent revisits)
+    const existing = document.getElementById('sendMessageSection');
+    if (existing) existing.remove();
+
+    const sendSection = document.createElement('div');
+    sendSection.id = 'sendMessageSection';
+    sendSection.className = 'pt-2 space-y-3';
+
+    if (alreadyConfirmed) {
+      // Email was already sent on a previous visit — show confirmation, no button needed
+      sendSection.innerHTML = `
+        <div class="flex items-center justify-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-sm font-semibold">
+          <span class="material-symbols-outlined text-[18px]">check_circle</span>
+          Your Mass intention has already been submitted successfully.
+        </div>`;
+    } else {
+      sendSection.innerHTML = `
+        <p class="text-sm text-on-surface-variant text-center">
+          Your payment is confirmed. Click below to submit your Mass intention to the church administration.
+        </p>
+        <button
+          type="button"
+          id="sendMessageBtn"
+          onclick="sendMessage('${escapeHtml(ref)}')"
+          class="w-full py-4 px-6 rounded-xl bg-primary text-on-primary hover:bg-primary-container transition-all shadow-md hover:shadow-xl flex items-center justify-center gap-2 font-display text-lg tracking-wide group"
+        >
+          <span class="text-secondary-fixed text-lg">†</span>
+          <span id="sendMessageBtnText" class="font-semibold">SEND MESSAGE</span>
+          <span class="material-symbols-outlined text-[20px] group-hover:translate-x-1 transition-transform" id="sendMessageBtnIcon">send</span>
+        </button>
+        <div id="sendMessageResult" class="hidden"></div>`;
+    }
+
+    returnBtn.parentNode.insertBefore(sendSection, returnBtn);
+  }
+
   if (successScreen) {
     successScreen.classList.add('active-success');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -483,6 +527,99 @@ function revealSuccessScreen(booking) {
   // Clear session draft
   sessionStorage.removeItem('yccci_pending_ref');
   sessionStorage.removeItem('yccci_pending_booking');
+}
+
+// -----------------------------------------------------------------------------
+// 11. SEND MESSAGE — called when customer clicks the SEND MESSAGE button.
+//     POSTs the verified payment reference to /api/send-message.
+//     The backend confirms payment is paid, then sends via Brevo SMTP.
+//     Customer stays on this page. Success or error shown inline.
+// -----------------------------------------------------------------------------
+async function sendMessage(reference) {
+  const btn = document.getElementById('sendMessageBtn');
+  const btnText = document.getElementById('sendMessageBtnText');
+  const btnIcon = document.getElementById('sendMessageBtnIcon');
+  const resultEl = document.getElementById('sendMessageResult');
+
+  if (!reference) {
+    if (resultEl) {
+      resultEl.className = 'mt-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium';
+      resultEl.innerText = 'Missing payment reference. Please contact support.';
+      resultEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  // Disable button and show loading state
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+  }
+  if (btnText) btnText.innerHTML = '<span class="btn-spinner mr-2"></span> Sending...';
+  if (btnIcon) btnIcon.classList.add('hidden');
+  if (resultEl) resultEl.classList.add('hidden');
+
+  try {
+    const baseUrl = (typeof YCCCI_CONFIG !== 'undefined' && YCCCI_CONFIG.BACKEND_URL)
+      ? YCCCI_CONFIG.BACKEND_URL.replace(/\/+$/, '')
+      : '';
+    const endpoint = `${baseUrl}/api/send-message`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ reference })
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (response.ok && data && data.success) {
+      // Success — replace the button with a permanent confirmation message
+      const sendSection = document.getElementById('sendMessageSection');
+      if (sendSection) {
+        sendSection.innerHTML = `
+          <div class="flex items-center justify-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-sm font-semibold">
+            <span class="material-symbols-outlined text-[18px]">check_circle</span>
+            Your Mass intention has been submitted successfully. God bless you.
+          </div>`;
+      }
+    } else {
+      // Error — restore the button so customer can retry
+      const errMsg = (data && data.message)
+        ? data.message
+        : 'Unable to submit your intention. Please try again.';
+
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+      }
+      if (btnText) btnText.innerText = 'SEND MESSAGE';
+      if (btnIcon) btnIcon.classList.remove('hidden');
+
+      if (resultEl) {
+        resultEl.className = 'mt-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm';
+        resultEl.innerText = errMsg;
+        resultEl.classList.remove('hidden');
+      }
+    }
+  } catch (err) {
+    // Network error — restore button for retry
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-75', 'cursor-not-allowed');
+    }
+    if (btnText) btnText.innerText = 'SEND MESSAGE';
+    if (btnIcon) btnIcon.classList.remove('hidden');
+
+    if (resultEl) {
+      resultEl.className = 'mt-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm';
+      resultEl.innerText = 'A network error occurred. Please check your connection and try again.';
+      resultEl.classList.remove('hidden');
+    }
+  }
 }
 
 function resetFormForNewSubmission() {

@@ -8,11 +8,48 @@ const store = require('./lib/store');
 const paystack = require('./lib/paystack');
 const { sendBookingConfirmationEmail } = require('./lib/email');
 
+// =============================================================================
+// DATA PERSISTENCE WARNING — READ BEFORE DEPLOYING TO RENDER
+// =============================================================================
+//
+// Bookings are stored in data/bookings.json (a flat JSON file on local disk).
+//
+// RENDER FREE / STARTER WEB SERVICES use ephemeral (non-persistent) storage:
+//   - The disk is RESET on every deploy, every restart, and every spin-down.
+//   - Any bookings saved to data/bookings.json WILL BE LOST between restarts.
+//   - This means a customer who paid but has not yet clicked SEND MESSAGE
+//     could lose their booking reference and be unable to send their intention.
+//
+// RENDER PAID PLANS support a persistent disk add-on:
+//   - Go to your Render Web Service → Disks → Add Disk.
+//   - Mount path: /data  (or /opt/render/project/src/data).
+//   - Set DATA_DIR in your environment to that mount path so store.js writes there.
+//   - Persistent disks survive restarts and deploys.
+//
+// OPTIONS (choose one before going live):
+//
+//   Option A — Render Persistent Disk (simplest, no code change needed)
+//     1. Add a paid disk in your Render dashboard.
+//     2. Set environment variable:  DATA_DIR=/data
+//     3. Update lib/store.js to read DATA_DIR:
+//        const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+//
+//   Option B — External database (MongoDB Atlas free tier, PlanetScale, Supabase, etc.)
+//     Requires replacing lib/store.js with a database client.
+//     Ask Kiro to implement this once you have chosen a provider.
+//
+//   Option C — Accept the risk for short-lived campaigns only
+//     If this is a November-only campaign and the server never restarts mid-campaign,
+//     the flat file may be acceptable. Confirm with your hosting plan.
+//
+// ACTION REQUIRED: Confirm your Render plan and choose an option before going live.
+// =============================================================================
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Recipient email configuration (defaults to youngchosenforchrist@gmail.com)
-const RECIPIENT_EMAIL = process.env.MASS_BOOKING_EMAIL || process.env.RECIPIENT_EMAIL || 'youngchosenforchrist@gmail.com';
+// Recipient email configuration — fixed destination for all booking confirmations
+const RECIPIENT_EMAIL = process.env.ADMIN_EMAIL || process.env.MASS_BOOKING_EMAIL || process.env.RECIPIENT_EMAIL || 'younganchoseforchrist@gmail.com';
 
 // Enable CORS
 app.use(cors({
@@ -239,7 +276,10 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// 3. GET /api/verify-payment/:reference - Verify payment on server & trigger email
+// 3. GET /api/verify-payment/:reference
+//    Verifies payment with Paystack and marks the booking as paid.
+//    Does NOT send any email — email is only sent when the customer
+//    explicitly clicks SEND MESSAGE (see /api/send-message below).
 // -----------------------------------------------------------------------------
 app.get('/api/verify-payment/:reference', async (req, res) => {
   try {
@@ -248,51 +288,37 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Transaction reference is required.' });
     }
 
-    // Retrieve or instantiate booking record
+    // Retrieve existing booking record
     let booking = store.getBooking(reference);
 
-    // If already verified and confirmed as paid (e.g. by webhook or previous verification)
+    // Already verified as paid — return current state so frontend can show SEND MESSAGE
     if (booking && booking.paymentStatus === 'paid') {
-      // If email was not yet delivered (e.g. earlier network blip), retry delivery safely
-      if (!booking.emailDelivered) {
-        try {
-          const emailResult = await sendBookingConfirmationEmail(booking);
-          booking = store.updateBooking(reference, {
-            emailDelivered: true,
-            emailSentAt: new Date().toISOString(),
-            emailProvider: emailResult.provider,
-            emailError: null
-          });
-        } catch (emailErr) {
-          console.error(`⚠️ [Verify] Email delivery pending:`, emailErr.message);
-        }
-      }
-
+      console.log(`[Verify] Booking ${booking.bookingReference} already verified as paid.`);
       return res.status(200).json({
         success: true,
-        alreadyConfirmed: true,
-        message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
+        paymentVerified: true,
+        alreadyConfirmed: !!booking.emailDelivered,
+        message: 'Payment confirmed. You may now submit your Mass intention.',
         booking: sanitizeBooking(booking)
       });
     }
 
-    // Verify transaction with Paystack API
+    // Verify transaction directly with Paystack API (server-side only)
     const tx = await paystack.verifyTransaction(reference);
 
-    // Transaction must exist and have status 'success'
+    // Payment must be successful
     if (!tx || tx.status !== 'success') {
       const txStatus = tx ? tx.status : 'unknown';
-      if (booking) {
-        store.updateBooking(reference, { paymentStatus: txStatus });
-      }
+      if (booking) store.updateBooking(reference, { paymentStatus: txStatus });
       return res.status(400).json({
         success: false,
+        paymentVerified: false,
         paymentStatus: txStatus,
-        message: `Payment status is '${txStatus}'. A Mass booking can only be confirmed after successful payment.`
+        message: `Payment status is '${txStatus}'. Only a successful payment can proceed to message submission.`
       });
     }
 
-    // Validate currency matches NGN
+    // Validate currency
     if (String(tx.currency).toUpperCase() !== 'NGN') {
       return res.status(400).json({
         success: false,
@@ -300,7 +326,7 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
       });
     }
 
-    // Reconstruct booking data if missing in memory (e.g. from Paystack metadata)
+    // Reconstruct booking from Paystack metadata if it was lost (e.g. server restart)
     if (!booking) {
       const meta = tx.metadata || {};
       booking = {
@@ -313,65 +339,37 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
         requesterEmail: (tx.customer && tx.customer.email) || meta.requester_email || '',
         requesterName: meta.requester_name || 'Parishioner',
         intentionNotes: meta.intention_notes || '',
-        paymentStatus: 'paid',
-        paidAt: tx.paid_at || new Date().toISOString(),
-        channel: tx.channel,
+        paymentStatus: 'pending',
         emailDelivered: false,
         createdAt: tx.created_at || new Date().toISOString()
       };
       store.saveBooking(booking);
     }
 
-    // Validate amount matches expected booking amount
+    // Validate that the paid amount matches what was originally booked
     if (booking.amountInKobo && tx.amount !== booking.amountInKobo) {
-      console.error(`Amount mismatch: expected ${booking.amountInKobo} kobo, got ${tx.amount} kobo`);
+      console.error(`[Verify] Amount mismatch: expected ${booking.amountInKobo} kobo, got ${tx.amount} kobo`);
       return res.status(400).json({
         success: false,
         message: 'Payment amount mismatch. Please contact support.'
       });
     }
 
-    // Mark as PAID
-    const updates = {
+    // Mark booking as PAID — email is NOT sent here
+    booking = store.updateBooking(reference, {
       paymentStatus: 'paid',
       paidAt: tx.paid_at || new Date().toISOString(),
       channel: tx.channel || 'paystack'
-    };
-    booking = store.updateBooking(reference, updates);
+    });
 
-    // IDEMPOTENCY: Check if confirmation email was already dispatched
-    if (booking.emailDelivered) {
-      console.log(`[Verify] Booking ${booking.bookingReference} was already confirmed and email sent. Idempotent return.`);
-      return res.status(200).json({
-        success: true,
-        alreadyConfirmed: true,
-        message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
-        booking: sanitizeBooking(booking)
-      });
-    }
+    console.log(`✅ [Verify] Payment verified for ${booking.bookingReference}. Awaiting customer SEND MESSAGE action.`);
 
-    // Send confirmation email to youngchosenforchrist@gmail.com strictly after verification
-    try {
-      const emailResult = await sendBookingConfirmationEmail(booking);
-      booking = store.updateBooking(reference, {
-        emailDelivered: true,
-        emailSentAt: new Date().toISOString(),
-        emailProvider: emailResult.provider,
-        emailError: null
-      });
-      console.log(`✅ [Verify] Confirmation email successfully delivered for booking ${booking.bookingReference}`);
-    } catch (emailErr) {
-      // Payment remains CONFIRMED, but record email delivery failure for retry
-      console.error(`⚠️ [Verify] Payment confirmed, but email dispatch failed for ${booking.bookingReference}:`, emailErr.message);
-      booking = store.updateBooking(reference, {
-        emailDelivered: false,
-        emailError: emailErr.message
-      });
-    }
-
+    // Return verified state — frontend will now show the SEND MESSAGE button
     return res.status(200).json({
       success: true,
-      message: 'Your Mass booking has been received successfully. Your payment has been confirmed, and your Mass intention has been submitted. Thank you for supporting this holy Mass. God bless you.',
+      paymentVerified: true,
+      alreadyConfirmed: false,
+      message: 'Payment confirmed. You may now submit your Mass intention.',
       booking: sanitizeBooking(booking)
     });
 
@@ -380,6 +378,90 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || 'Payment verification failed. Please check your reference and try again.'
+    });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3b. POST /api/send-message
+//     Called only when the customer explicitly clicks SEND MESSAGE.
+//     Requires prior successful payment verification.
+//     Sends the Mass intention email via Brevo SMTP to younganchoseforchrist@gmail.com.
+//     Idempotent: will not send a duplicate if email was already delivered.
+// -----------------------------------------------------------------------------
+app.post('/api/send-message', async (req, res) => {
+  try {
+    const { reference } = req.body;
+
+    if (!reference || typeof reference !== 'string' || reference.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid payment reference is required to send your Mass intention.'
+      });
+    }
+
+    const ref = reference.trim();
+    const booking = store.getBooking(ref);
+
+    // Booking must exist
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found. Please complete payment before submitting your intention.'
+      });
+    }
+
+    // Payment must be verified as paid — cannot bypass by sending reference directly
+    if (booking.paymentStatus !== 'paid') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your payment has not been verified. Please complete payment before sending your intention.'
+      });
+    }
+
+    // IDEMPOTENCY: prevent duplicate emails
+    if (booking.emailDelivered) {
+      console.log(`[SendMessage] Booking ${booking.bookingReference} email already delivered. Returning idempotent success.`);
+      return res.status(200).json({
+        success: true,
+        alreadySent: true,
+        message: 'Your Mass intention has already been submitted successfully.'
+      });
+    }
+
+    // Send email via Brevo SMTP — recipient is always the fixed church address from env
+    const emailResult = await sendBookingConfirmationEmail(booking);
+
+    store.updateBooking(ref, {
+      emailDelivered: true,
+      emailSentAt: new Date().toISOString(),
+      emailProvider: emailResult.provider,
+      emailError: null
+    });
+
+    console.log(`✅ [SendMessage] Intention email delivered via ${emailResult.provider} for ${booking.bookingReference}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Your Mass intention has been submitted successfully. God bless you.',
+      provider: emailResult.provider,
+      messageId: emailResult.messageId || null
+    });
+
+  } catch (error) {
+    console.error('[SendMessage Error]:', error.message);
+
+    // Record failed attempt without marking as delivered
+    if (req.body && req.body.reference) {
+      store.updateBooking(req.body.reference.trim(), {
+        emailDelivered: false,
+        emailError: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to submit your Mass intention at this time. Please try again.'
     });
   }
 });
@@ -420,7 +502,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
         return res.status(200).json({ received: true });
       }
 
-      // Find or recreate booking
+      // Find or recreate booking record
       let booking = store.getBooking(reference);
       if (!booking) {
         const meta = data.metadata || {};
@@ -441,6 +523,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
           createdAt: data.created_at || new Date().toISOString()
         };
         store.saveBooking(booking);
+        console.log(`[Webhook] Reconstructed booking ${booking.bookingReference} from metadata. Awaiting customer SEND MESSAGE.`);
       } else {
         // Validate amount matches
         if (booking.amountInKobo && data.amount !== booking.amountInKobo) {
@@ -455,28 +538,20 @@ app.post('/api/webhook/paystack', async (req, res) => {
         });
       }
 
-      // IDEMPOTENCY: Check if confirmation email was already dispatched
+      // IDEMPOTENCY: booking already paid — nothing more to do here
       if (booking.emailDelivered) {
-        console.log(`[Webhook] Booking ${booking.bookingReference} already confirmed and email dispatched. Skipping duplicate email.`);
+        console.log(`[Webhook] Booking ${booking.bookingReference} already processed. Skipping.`);
         return res.status(200).json({ received: true, message: 'Already processed' });
       }
 
-      // Send email strictly after payment verification
-      try {
-        const emailResult = await sendBookingConfirmationEmail(booking);
+      // Mark as paid — email will be sent only when customer clicks SEND MESSAGE
+      if (booking.paymentStatus !== 'paid') {
         store.updateBooking(reference, {
-          emailDelivered: true,
-          emailSentAt: new Date().toISOString(),
-          emailProvider: emailResult.provider,
-          emailError: null
+          paymentStatus: 'paid',
+          paidAt: data.paid_at || new Date().toISOString(),
+          channel: data.channel
         });
-        console.log(`✅ [Webhook] Confirmation email successfully delivered to ${RECIPIENT_EMAIL} [${booking.bookingReference}]`);
-      } catch (emailErr) {
-        console.error(`⚠️ [Webhook] Email dispatch failed for ${booking.bookingReference}:`, emailErr.message);
-        store.updateBooking(reference, {
-          emailDelivered: false,
-          emailError: emailErr.message
-        });
+        console.log(`✅ [Webhook] Booking ${booking.bookingReference} marked as paid. Awaiting customer SEND MESSAGE.`);
       }
     }
 
@@ -489,47 +564,9 @@ app.post('/api/webhook/paystack', async (req, res) => {
   }
 });
 
-// -----------------------------------------------------------------------------
-// 5. POST /api/admin/retry-email/:reference - Safe email re-delivery for paid booking
-// -----------------------------------------------------------------------------
-app.post('/api/admin/retry-email/:reference', async (req, res) => {
-  try {
-    const { reference } = req.params;
-    const booking = store.getBooking(reference);
-
-    if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking reference not found.' });
-    }
-
-    if (booking.paymentStatus !== 'paid') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot send confirmation email for an unpaid booking.'
-      });
-    }
-
-    const emailResult = await sendBookingConfirmationEmail(booking);
-    const updated = store.updateBooking(reference, {
-      emailDelivered: true,
-      emailSentAt: new Date().toISOString(),
-      emailProvider: emailResult.provider,
-      emailError: null
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: `Confirmation email re-dispatched successfully to ${RECIPIENT_EMAIL} via ${emailResult.provider}.`,
-      booking: sanitizeBooking(updated)
-    });
-
-  } catch (error) {
-    console.error('[Admin Retry Email Error]:', error.message);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to re-dispatch email.'
-    });
-  }
-});
+// NOTE: /api/admin/retry-email was removed.
+// Retries are handled safely and idempotently by POST /api/send-message,
+// which already checks paymentStatus === 'paid' and prevents duplicate sends.
 
 // -----------------------------------------------------------------------------
 // 6. GET /api/health - Diagnostic endpoint
@@ -539,14 +576,34 @@ app.get('/api/health', (req, res) => {
   const isLive = secretKey.startsWith('sk_live_');
   const isTest = secretKey.startsWith('sk_test_');
 
+  // Determine which email provider is active
+  const resendConfigured = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '');
+  const brevoUser = process.env.BREVO_SMTP_USER || '';
+  const brevoConfigured = !!(
+    process.env.BREVO_SMTP_PASS &&
+    brevoUser &&
+    brevoUser !== 'replace_with_your_brevo_login_email'
+  );
+  const gmailConfigured = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+  const smtpConfigured = !!(process.env.SMTP_HOST);
+
+  let activeEmailProvider = 'UNCONFIGURED';
+  if (resendConfigured) activeEmailProvider = 'Resend';
+  else if (brevoConfigured) activeEmailProvider = 'Brevo SMTP';
+  else if (gmailConfigured) activeEmailProvider = 'Gmail SMTP';
+  else if (smtpConfigured) activeEmailProvider = 'Generic SMTP';
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     recipientEmail: RECIPIENT_EMAIL,
     paystackConfigured: !!secretKey,
     paystackEnvironment: isLive ? 'LIVE' : (isTest ? 'TEST' : 'UNCONFIGURED'),
-    resendConfigured: !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== ''),
-    smtpConfigured: !!(process.env.GMAIL_USER || process.env.SMTP_HOST),
+    emailProvider: activeEmailProvider,
+    emailReady: activeEmailProvider !== 'UNCONFIGURED',
+    resendConfigured,
+    brevoConfigured,
+    gmailConfigured,
     currency: 'NGN'
   });
 });
@@ -572,11 +629,21 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
+  const brevoUser = process.env.BREVO_SMTP_USER || '';
+  const brevoReady = !!(
+    process.env.BREVO_SMTP_PASS &&
+    brevoUser &&
+    brevoUser !== 'replace_with_your_brevo_login_email'
+  );
+  const resendReady = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim());
+  const emailStatus = resendReady ? 'Resend API ✅' : brevoReady ? 'Brevo SMTP ✅' : (process.env.GMAIL_USER ? 'Gmail SMTP ✅' : '⚠️  Not configured — set BREVO_SMTP_USER + BREVO_SMTP_PASS');
+
   console.log(`\n======================================================`);
-  console.log(`✝ YCCCI Mass Booking & Paystack Live Payment Server Running`);
+  console.log(`✝ YCCCI Mass Booking & Paystack Live Payment Server`);
   console.log(`  Local URL:        http://localhost:${PORT}`);
   console.log(`  Recipient Email:  ${RECIPIENT_EMAIL}`);
-  console.log(`  Paystack Mode:    ${(process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_live_') ? 'LIVE 🟢' : 'NOT CONFIGURED ⚠️'}`);
-  console.log(`  Email Dispatch:   ${process.env.RESEND_API_KEY ? 'Resend API Configured' : (process.env.GMAIL_USER ? 'SMTP Configured' : 'Awaiting credentials')}`);
+  console.log(`  Paystack Mode:    ${secretKey.startsWith('sk_live_') ? 'LIVE 🟢' : secretKey.startsWith('sk_test_') ? 'TEST 🟡' : 'NOT CONFIGURED ⚠️'}`);
+  console.log(`  Email Provider:   ${emailStatus}`);
   console.log(`======================================================\n`);
 });

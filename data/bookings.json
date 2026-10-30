@@ -1,242 +1,346 @@
 {
-  "PAY-TEST-001": {
-    "bookingReference": "YCCCI-TEST-001",
-    "paystackReference": "PAY-TEST-001",
+  "YCCCI-PAY-STORE-001": {
+    "bookingReference": "YCCCI-NOV-2026-STORE1",
+    "paystackReference": "YCCCI-PAY-STORE-001",
     "deceasedNames": [
-      "St. Joseph"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "test@example.com",
-    "paymentStatus": "pending",
-    "emailDelivered": false
-  },
-  "YCCCI-TEST-001": {
-    "bookingReference": "YCCCI-TEST-001",
-    "paystackReference": "PAY-TEST-001",
-    "deceasedNames": [
-      "St. Joseph"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "test@example.com",
-    "paymentStatus": "pending",
-    "emailDelivered": false
-  },
-  "YCCCI-PAY-TEST-9999": {
-    "bookingReference": "YCCCI-NOV-2026-9999",
-    "paystackReference": "YCCCI-PAY-TEST-9999",
-    "deceasedNames": [
-      "Papa Jude",
-      "Mama Grace",
-      "Brother Emmanuel"
+      "Departed Soul"
     ],
     "offeringAmount": 5000,
     "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Jude Okonkwo",
-    "intentionNotes": "Eternal peace and rest",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "pending",
     "emailDelivered": false,
-    "createdAt": "2026-10-28T22:50:09.689Z"
+    "createdAt": "2026-10-30T09:26:37.525Z"
   },
-  "YCCCI-NOV-2026-9999": {
-    "bookingReference": "YCCCI-NOV-2026-9999",
-    "paystackReference": "YCCCI-PAY-TEST-9999",
+  "YCCCI-NOV-2026-STORE1": {
+    "bookingReference": "YCCCI-NOV-2026-STORE1",
+    "paystackReference": "YCCCI-PAY-STORE-001",
     "deceasedNames": [
-      "Papa Jude",
-      "Mama Grace",
-      "Brother Emmanuel"
+      "Departed Soul"
     ],
     "offeringAmount": 5000,
     "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Jude Okonkwo",
-    "intentionNotes": "Eternal peace and rest",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "pending",
     "emailDelivered": false,
-    "createdAt": "2026-10-28T22:50:09.689Z"
+    "createdAt": "2026-10-30T09:26:37.525Z"
   },
-  "YCCCI-IDEMPOTENT-TEST-001": {
-    "bookingReference": "YCCCI-NOV-2026-8888",
-    "paystackReference": "YCCCI-IDEMPOTENT-TEST-001",
+  "YCCCI-PAY-STORE-002": {
+    "bookingReference": "YCCCI-NOV-2026-STORE2",
+    "paystackReference": "YCCCI-PAY-STORE-002",
     "deceasedNames": [
-      "St. Monica"
+      "Departed Soul"
     ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "monica@example.com",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "pending",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.530Z"
+  },
+  "YCCCI-NOV-2026-STORE2": {
+    "bookingReference": "YCCCI-NOV-2026-STORE2",
+    "paystackReference": "YCCCI-PAY-STORE-002",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "pending",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.530Z"
+  },
+  "YCCCI-PAY-STORE-003": {
+    "bookingReference": "YCCCI-NOV-2026-STORE3",
+    "paystackReference": "YCCCI-PAY-STORE-003",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.534Z",
+    "paidAt": "2026-11-01T10:00:00Z",
+    "updatedAt": "2026-10-30T09:26:37.537Z"
+  },
+  "YCCCI-NOV-2026-STORE3": {
+    "bookingReference": "YCCCI-NOV-2026-STORE3",
+    "paystackReference": "YCCCI-PAY-STORE-003",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.534Z",
+    "paidAt": "2026-11-01T10:00:00Z",
+    "updatedAt": "2026-10-30T09:26:37.537Z"
+  },
+  "YCCCI-PAY-VERIFY-001": {
+    "bookingReference": "YCCCI-NOV-2026-VER1",
+    "paystackReference": "YCCCI-PAY-VERIFY-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.544Z",
+    "paidAt": "2026-10-30T09:26:37.556Z",
+    "channel": "card",
+    "updatedAt": "2026-10-30T09:26:37.557Z"
+  },
+  "YCCCI-NOV-2026-VER1": {
+    "bookingReference": "YCCCI-NOV-2026-VER1",
+    "paystackReference": "YCCCI-PAY-VERIFY-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.544Z",
+    "paidAt": "2026-10-30T09:26:37.556Z",
+    "channel": "card",
+    "updatedAt": "2026-10-30T09:26:37.557Z"
+  },
+  "YCCCI-PAY-GATE-001": {
+    "bookingReference": "YCCCI-NOV-2026-GATE1",
+    "paystackReference": "YCCCI-PAY-GATE-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "pending",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.562Z"
+  },
+  "YCCCI-NOV-2026-GATE1": {
+    "bookingReference": "YCCCI-NOV-2026-GATE1",
+    "paystackReference": "YCCCI-PAY-GATE-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "pending",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.562Z"
+  },
+  "YCCCI-PAY-GATE-002": {
+    "bookingReference": "YCCCI-NOV-2026-GATE2",
+    "paystackReference": "YCCCI-PAY-GATE-002",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "failed",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.577Z"
+  },
+  "YCCCI-NOV-2026-GATE2": {
+    "bookingReference": "YCCCI-NOV-2026-GATE2",
+    "paystackReference": "YCCCI-PAY-GATE-002",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "failed",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.577Z"
+  },
+  "YCCCI-PAY-GATE-003": {
+    "bookingReference": "YCCCI-NOV-2026-GATE3",
+    "paystackReference": "YCCCI-PAY-GATE-003",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.593Z"
+  },
+  "YCCCI-NOV-2026-GATE3": {
+    "bookingReference": "YCCCI-NOV-2026-GATE3",
+    "paystackReference": "YCCCI-PAY-GATE-003",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": false,
+    "createdAt": "2026-10-30T09:26:37.593Z"
+  },
+  "YCCCI-PAY-IDEM-001": {
+    "bookingReference": "YCCCI-NOV-2026-IDEM1",
+    "paystackReference": "YCCCI-PAY-IDEM-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "paid",
     "emailDelivered": true,
-    "emailSentAt": "2026-10-28T22:50:09.834Z"
+    "createdAt": "2026-10-30T09:26:37.600Z",
+    "emailSentAt": "2026-10-30T09:26:37.600Z"
   },
-  "YCCCI-NOV-2026-8888": {
-    "bookingReference": "YCCCI-NOV-2026-8888",
-    "paystackReference": "YCCCI-IDEMPOTENT-TEST-001",
+  "YCCCI-NOV-2026-IDEM1": {
+    "bookingReference": "YCCCI-NOV-2026-IDEM1",
+    "paystackReference": "YCCCI-PAY-IDEM-001",
     "deceasedNames": [
-      "St. Monica"
+      "Departed Soul"
     ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "monica@example.com",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "paid",
     "emailDelivered": true,
-    "emailSentAt": "2026-10-28T22:50:09.834Z"
+    "createdAt": "2026-10-30T09:26:37.600Z",
+    "emailSentAt": "2026-10-30T09:26:37.600Z"
   },
-  "YCCCI-EMAIL-FAIL-TEST-001": {
-    "bookingReference": "YCCCI-NOV-2026-7777",
-    "paystackReference": "YCCCI-EMAIL-FAIL-TEST-001",
+  "YCCCI-PAY-IDEM-002": {
+    "bookingReference": "YCCCI-NOV-2026-IDEM2",
+    "paystackReference": "YCCCI-PAY-IDEM-002",
     "deceasedNames": [
-      "Loved One"
+      "Departed Soul"
     ],
-    "offeringAmount": 3000,
-    "amountInKobo": 300000,
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "retry@example.com",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "paid",
     "emailDelivered": true,
+    "createdAt": "2026-10-30T09:26:37.606Z",
+    "emailSentAt": "2026-10-30T09:26:37.610Z",
+    "emailProvider": "Brevo",
+    "updatedAt": "2026-10-30T09:26:37.610Z"
+  },
+  "YCCCI-NOV-2026-IDEM2": {
+    "bookingReference": "YCCCI-NOV-2026-IDEM2",
+    "paystackReference": "YCCCI-PAY-IDEM-002",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": true,
+    "createdAt": "2026-10-30T09:26:37.606Z",
+    "emailSentAt": "2026-10-30T09:26:37.610Z",
+    "emailProvider": "Brevo",
+    "updatedAt": "2026-10-30T09:26:37.610Z"
+  },
+  "YCCCI-PAY-RETRY-001": {
+    "bookingReference": "YCCCI-NOV-2026-RETRY1",
+    "paystackReference": "YCCCI-PAY-RETRY-001",
+    "deceasedNames": [
+      "Departed Soul"
+    ],
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
+    "currency": "NGN",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
+    "paymentStatus": "paid",
+    "emailDelivered": true,
+    "createdAt": "2026-10-30T09:26:37.614Z",
     "emailError": null,
-    "emailSentAt": "2026-10-28T22:50:09.842Z",
-    "updatedAt": "2026-10-28T22:50:09.842Z"
+    "emailSentAt": "2026-10-30T09:26:37.619Z",
+    "updatedAt": "2026-10-30T09:26:37.619Z"
   },
-  "YCCCI-NOV-2026-7777": {
-    "bookingReference": "YCCCI-NOV-2026-7777",
-    "paystackReference": "YCCCI-EMAIL-FAIL-TEST-001",
+  "YCCCI-NOV-2026-RETRY1": {
+    "bookingReference": "YCCCI-NOV-2026-RETRY1",
+    "paystackReference": "YCCCI-PAY-RETRY-001",
     "deceasedNames": [
-      "Loved One"
+      "Departed Soul"
     ],
-    "offeringAmount": 3000,
-    "amountInKobo": 300000,
+    "offeringAmount": 5000,
+    "amountInKobo": 500000,
     "currency": "NGN",
-    "requesterEmail": "retry@example.com",
+    "requesterEmail": "parishioner@example.com",
+    "requesterName": "Test Parishioner",
+    "intentionNotes": "",
     "paymentStatus": "paid",
     "emailDelivered": true,
+    "createdAt": "2026-10-30T09:26:37.614Z",
     "emailError": null,
-    "emailSentAt": "2026-10-28T22:50:09.842Z",
-    "updatedAt": "2026-10-28T22:50:09.842Z"
-  },
-  "YCCCI-PAY-1793225479575-3546": {
-    "bookingReference": "YCCCI-NOV-2026-3546",
-    "paystackReference": "YCCCI-PAY-1793225479575-3546",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "pending",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:11:20.807Z"
-  },
-  "YCCCI-NOV-2026-3546": {
-    "bookingReference": "YCCCI-NOV-2026-3546",
-    "paystackReference": "YCCCI-PAY-1793225479575-3546",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "pending",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:11:20.807Z"
-  },
-  "YCCCI-PAY-1793225568981-4814": {
-    "bookingReference": "YCCCI-NOV-2026-4814",
-    "paystackReference": "YCCCI-PAY-1793225568981-4814",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "abandoned",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:12:50.692Z",
-    "paidAt": "2026-10-28T22:12:50.713Z",
-    "channel": "card",
-    "updatedAt": "2026-10-28T22:12:53.353Z",
-    "emailError": "No email delivery provider is configured. Please set RESEND_API_KEY (or GMAIL_USER / GMAIL_APP_PASSWORD) in environment variables."
-  },
-  "YCCCI-NOV-2026-4814": {
-    "bookingReference": "YCCCI-NOV-2026-4814",
-    "paystackReference": "YCCCI-PAY-1793225568981-4814",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "abandoned",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:12:50.692Z",
-    "paidAt": "2026-10-28T22:12:50.713Z",
-    "channel": "card",
-    "updatedAt": "2026-10-28T22:12:53.353Z",
-    "emailError": "No email delivery provider is configured. Please set RESEND_API_KEY (or GMAIL_USER / GMAIL_APP_PASSWORD) in environment variables."
-  },
-  "YCCCI-PAY-1793225929601-1730": {
-    "bookingReference": "YCCCI-NOV-2026-1730",
-    "paystackReference": "YCCCI-PAY-1793225929601-1730",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "paid",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:18:50.769Z",
-    "paidAt": "2026-10-28T22:18:50.785Z",
-    "channel": "card",
-    "updatedAt": "2026-10-28T22:18:50.834Z",
-    "emailError": "No email delivery provider is configured. Please set RESEND_API_KEY (or GMAIL_USER / GMAIL_APP_PASSWORD) in environment variables."
-  },
-  "YCCCI-NOV-2026-1730": {
-    "bookingReference": "YCCCI-NOV-2026-1730",
-    "paystackReference": "YCCCI-PAY-1793225929601-1730",
-    "deceasedNames": [
-      "Papa Jude Ekwueme",
-      "Mama Theresa"
-    ],
-    "offeringAmount": 2000,
-    "amountInKobo": 200000,
-    "currency": "NGN",
-    "requesterEmail": "testparishioner@example.com",
-    "requesterName": "Augustine Jude",
-    "intentionNotes": "Requiem aeternam",
-    "paymentStatus": "paid",
-    "emailDelivered": false,
-    "createdAt": "2026-10-28T22:18:50.769Z",
-    "paidAt": "2026-10-28T22:18:50.785Z",
-    "channel": "card",
-    "updatedAt": "2026-10-28T22:18:50.834Z",
-    "emailError": "No email delivery provider is configured. Please set RESEND_API_KEY (or GMAIL_USER / GMAIL_APP_PASSWORD) in environment variables."
+    "emailSentAt": "2026-10-30T09:26:37.619Z",
+    "updatedAt": "2026-10-30T09:26:37.619Z"
   }
 }
