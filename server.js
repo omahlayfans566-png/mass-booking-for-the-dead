@@ -9,40 +9,16 @@ const paystack = require('./lib/paystack');
 const { sendBookingConfirmationEmail } = require('./lib/email');
 
 // =============================================================================
-// DATA PERSISTENCE WARNING — READ BEFORE DEPLOYING TO RENDER
+// DATA PERSISTENCE — MongoDB Atlas
 // =============================================================================
+// Bookings are stored in MongoDB Atlas via lib/store.js.
+// Booking data persists across Render restarts and redeployments.
 //
-// Bookings are stored in data/bookings.json (a flat JSON file on local disk).
+// Required environment variable (set in Render → Environment):
+//   MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/yccci_bookings
 //
-// RENDER FREE / STARTER WEB SERVICES use ephemeral (non-persistent) storage:
-//   - The disk is RESET on every deploy, every restart, and every spin-down.
-//   - Any bookings saved to data/bookings.json WILL BE LOST between restarts.
-//   - This means a customer who paid but has not yet clicked SEND MESSAGE
-//     could lose their booking reference and be unable to send their intention.
-//
-// RENDER PAID PLANS support a persistent disk add-on:
-//   - Go to your Render Web Service → Disks → Add Disk.
-//   - Mount path: /data  (or /opt/render/project/src/data).
-//   - Set DATA_DIR in your environment to that mount path so store.js writes there.
-//   - Persistent disks survive restarts and deploys.
-//
-// OPTIONS (choose one before going live):
-//
-//   Option A — Render Persistent Disk (simplest, no code change needed)
-//     1. Add a paid disk in your Render dashboard.
-//     2. Set environment variable:  DATA_DIR=/data
-//     3. Update lib/store.js to read DATA_DIR:
-//        const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-//
-//   Option B — External database (MongoDB Atlas free tier, PlanetScale, Supabase, etc.)
-//     Requires replacing lib/store.js with a database client.
-//     Ask Kiro to implement this once you have chosen a provider.
-//
-//   Option C — Accept the risk for short-lived campaigns only
-//     If this is a November-only campaign and the server never restarts mid-campaign,
-//     the flat file may be acceptable. Confirm with your hosting plan.
-//
-// ACTION REQUIRED: Confirm your Render plan and choose an option before going live.
+// If MONGODB_URI is not set, all booking operations will fail with a clear
+// error message — no silent data loss.
 // =============================================================================
 
 const app = express();
@@ -254,7 +230,7 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    store.saveBooking(bookingRecord);
+    await store.saveBooking(bookingRecord);
 
     console.log(`[Paystack Init] Created pending booking ${bookingReference} (${paystackReference}) for ${cleanEmail} - ₦${numericAmount.toLocaleString()}`);
 
@@ -289,7 +265,7 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
     }
 
     // Retrieve existing booking record
-    let booking = store.getBooking(reference);
+    let booking = await store.getBooking(reference);
 
     // Already verified as paid — return current state so frontend can show SEND MESSAGE
     if (booking && booking.paymentStatus === 'paid') {
@@ -309,7 +285,7 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
     // Payment must be successful
     if (!tx || tx.status !== 'success') {
       const txStatus = tx ? tx.status : 'unknown';
-      if (booking) store.updateBooking(reference, { paymentStatus: txStatus });
+      if (booking) await store.updateBooking(reference, { paymentStatus: txStatus });
       return res.status(400).json({
         success: false,
         paymentVerified: false,
@@ -343,7 +319,7 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
         emailDelivered: false,
         createdAt: tx.created_at || new Date().toISOString()
       };
-      store.saveBooking(booking);
+      await store.saveBooking(booking);
     }
 
     // Validate that the paid amount matches what was originally booked
@@ -356,7 +332,7 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
     }
 
     // Mark booking as PAID — email is NOT sent here
-    booking = store.updateBooking(reference, {
+    booking = await store.updateBooking(reference, {
       paymentStatus: 'paid',
       paidAt: tx.paid_at || new Date().toISOString(),
       channel: tx.channel || 'paystack'
@@ -401,7 +377,7 @@ app.post('/api/send-message', async (req, res) => {
     }
 
     const ref = reference.trim();
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
 
     // Booking must exist
     if (!booking) {
@@ -432,7 +408,7 @@ app.post('/api/send-message', async (req, res) => {
     // Send email via Brevo SMTP — recipient is always the fixed church address from env
     const emailResult = await sendBookingConfirmationEmail(booking);
 
-    store.updateBooking(ref, {
+    await store.updateBooking(ref, {
       emailDelivered: true,
       emailSentAt: new Date().toISOString(),
       emailProvider: emailResult.provider,
@@ -453,7 +429,7 @@ app.post('/api/send-message', async (req, res) => {
 
     // Record failed attempt without marking as delivered
     if (req.body && req.body.reference) {
-      store.updateBooking(req.body.reference.trim(), {
+      await store.updateBooking(req.body.reference.trim(), {
         emailDelivered: false,
         emailError: error.message
       });
@@ -503,7 +479,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
       }
 
       // Find or recreate booking record
-      let booking = store.getBooking(reference);
+      let booking = await store.getBooking(reference);
       if (!booking) {
         const meta = data.metadata || {};
         booking = {
@@ -522,7 +498,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
           emailDelivered: false,
           createdAt: data.created_at || new Date().toISOString()
         };
-        store.saveBooking(booking);
+        await store.saveBooking(booking);
         console.log(`[Webhook] Reconstructed booking ${booking.bookingReference} from metadata. Awaiting customer SEND MESSAGE.`);
       } else {
         // Validate amount matches
@@ -531,7 +507,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
           return res.status(200).json({ received: true, error: 'Amount mismatch' });
         }
 
-        booking = store.updateBooking(reference, {
+        booking = await store.updateBooking(reference, {
           paymentStatus: 'paid',
           paidAt: data.paid_at || new Date().toISOString(),
           channel: data.channel
@@ -546,7 +522,7 @@ app.post('/api/webhook/paystack', async (req, res) => {
 
       // Mark as paid — email will be sent only when customer clicks SEND MESSAGE
       if (booking.paymentStatus !== 'paid') {
-        store.updateBooking(reference, {
+        await store.updateBooking(reference, {
           paymentStatus: 'paid',
           paidAt: data.paid_at || new Date().toISOString(),
           channel: data.channel
@@ -585,13 +561,14 @@ app.get('/api/health', (req, res) => {
     brevoUser !== 'replace_with_your_brevo_login_email'
   );
   const gmailConfigured = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-  const smtpConfigured = !!(process.env.SMTP_HOST);
+  const smtpConfigured  = !!(process.env.SMTP_HOST);
+  const mongoConfigured = !!(process.env.MONGODB_URI && process.env.MONGODB_URI.trim() !== '');
 
   let activeEmailProvider = 'UNCONFIGURED';
   if (resendConfigured) activeEmailProvider = 'Resend';
   else if (brevoConfigured) activeEmailProvider = 'Brevo SMTP';
   else if (gmailConfigured) activeEmailProvider = 'Gmail SMTP';
-  else if (smtpConfigured) activeEmailProvider = 'Generic SMTP';
+  else if (smtpConfigured)  activeEmailProvider = 'Generic SMTP';
 
   res.json({
     status: 'ok',
@@ -604,6 +581,7 @@ app.get('/api/health', (req, res) => {
     resendConfigured,
     brevoConfigured,
     gmailConfigured,
+    mongoConfigured,
     currency: 'NGN'
   });
 });
@@ -636,8 +614,10 @@ app.listen(PORT, () => {
     brevoUser &&
     brevoUser !== 'replace_with_your_brevo_login_email'
   );
-  const resendReady = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim());
-  const emailStatus = resendReady ? 'Resend API ✅' : brevoReady ? 'Brevo SMTP ✅' : (process.env.GMAIL_USER ? 'Gmail SMTP ✅' : '⚠️  Not configured — set BREVO_SMTP_USER + BREVO_SMTP_PASS');
+  const resendReady  = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim());
+  const mongoReady   = !!(process.env.MONGODB_URI && process.env.MONGODB_URI.trim());
+  const emailStatus  = resendReady ? 'Resend API ✅' : brevoReady ? 'Brevo SMTP ✅' : (process.env.GMAIL_USER ? 'Gmail SMTP ✅' : '⚠️  Not configured');
+  const mongoStatus  = mongoReady  ? 'MongoDB Atlas ✅' : '⚠️  MONGODB_URI not set — bookings will fail';
 
   console.log(`\n======================================================`);
   console.log(`✝ YCCCI Mass Booking & Paystack Live Payment Server`);
@@ -645,5 +625,6 @@ app.listen(PORT, () => {
   console.log(`  Recipient Email:  ${RECIPIENT_EMAIL}`);
   console.log(`  Paystack Mode:    ${secretKey.startsWith('sk_live_') ? 'LIVE 🟢' : secretKey.startsWith('sk_test_') ? 'TEST 🟡' : 'NOT CONFIGURED ⚠️'}`);
   console.log(`  Email Provider:   ${emailStatus}`);
+  console.log(`  Database:         ${mongoStatus}`);
   console.log(`======================================================\n`);
 });

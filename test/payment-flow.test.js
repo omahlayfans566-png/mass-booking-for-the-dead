@@ -11,6 +11,9 @@
  * No real Paystack transaction or real email is sent during these tests.
  */
 
+// Load .env before anything else so MONGODB_URI is available to lib/store.js
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const crypto = require('crypto');
 const assert = require('assert');
 const path   = require('path');
@@ -79,40 +82,40 @@ async function runTests() {
   // =========================================================================
   console.log('── Group 1: Store ──────────────────────────────');
 
-  test('Store saves and retrieves by Paystack reference', () => {
-    const booking = makeBooking('YCCCI-PAY-STORE-001', {
-      bookingReference: 'YCCCI-NOV-2026-STORE1'
+  await testAsync('Store saves and retrieves by Paystack reference', async () => {
+    const booking = makeBooking('YCCCI-PAY-STORE-101', {
+      bookingReference: 'YCCCI-NOV-2026-STORE101'
     });
-    store.saveBooking(booking);
+    await store.saveBooking(booking);
 
-    const byPaystack = store.getBooking('YCCCI-PAY-STORE-001');
-    assert.strictEqual(byPaystack.bookingReference, 'YCCCI-NOV-2026-STORE1');
+    const byPaystack = await store.getBooking('YCCCI-PAY-STORE-101');
+    assert.strictEqual(byPaystack.bookingReference, 'YCCCI-NOV-2026-STORE101');
     assert.strictEqual(byPaystack.offeringAmount, 5000);
   });
 
-  test('Store retrieves by booking reference as well as Paystack reference', () => {
-    const booking = makeBooking('YCCCI-PAY-STORE-002', {
-      bookingReference: 'YCCCI-NOV-2026-STORE2'
+  await testAsync('Store retrieves by booking reference as well as Paystack reference', async () => {
+    const booking = makeBooking('YCCCI-PAY-STORE-102', {
+      bookingReference: 'YCCCI-NOV-2026-STORE102'
     });
-    store.saveBooking(booking);
+    await store.saveBooking(booking);
 
-    const byBooking = store.getBooking('YCCCI-NOV-2026-STORE2');
+    const byBooking = await store.getBooking('YCCCI-NOV-2026-STORE102');
     assert.ok(byBooking, 'Should find booking by booking reference');
-    assert.strictEqual(byBooking.paystackReference, 'YCCCI-PAY-STORE-002');
+    assert.strictEqual(byBooking.paystackReference, 'YCCCI-PAY-STORE-102');
   });
 
-  test('Store updateBooking merges fields without overwriting unrelated ones', () => {
-    const ref = 'YCCCI-PAY-STORE-003';
-    store.saveBooking(makeBooking(ref, { bookingReference: 'YCCCI-NOV-2026-STORE3' }));
-    store.updateBooking(ref, { paymentStatus: 'paid', paidAt: '2026-11-01T10:00:00Z' });
+  await testAsync('Store updateBooking merges fields without overwriting unrelated ones', async () => {
+    const ref = 'YCCCI-PAY-STORE-103';
+    await store.saveBooking(makeBooking(ref, { bookingReference: 'YCCCI-NOV-2026-STORE103' }));
+    await store.updateBooking(ref, { paymentStatus: 'paid', paidAt: '2026-11-01T10:00:00Z' });
 
-    const updated = store.getBooking(ref);
+    const updated = await store.getBooking(ref);
     assert.strictEqual(updated.paymentStatus, 'paid');
     assert.strictEqual(updated.offeringAmount, 5000, 'Unrelated field must be preserved');
   });
 
-  test('Store returns null for an unknown reference', () => {
-    const result = store.getBooking('NO-SUCH-REF-XYZ');
+  await testAsync('Store returns null for an unknown reference', async () => {
+    const result = await store.getBooking('NO-SUCH-REF-XYZ');
     assert.strictEqual(result, null);
   });
 
@@ -121,21 +124,21 @@ async function runTests() {
   // =========================================================================
   console.log('\n── Group 2: Verify-payment does not send email ─');
 
-  test('After verify-payment, booking is marked paid but emailDelivered remains false', () => {
-    const ref = 'YCCCI-PAY-VERIFY-001';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-VER1',
+  await testAsync('After verify-payment, booking is marked paid but emailDelivered remains false', async () => {
+    const ref = 'YCCCI-PAY-VERIFY-101';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-VER101',
       paymentStatus: 'pending'
     }));
 
     // Simulate what /api/verify-payment does: mark paid, do NOT set emailDelivered
-    store.updateBooking(ref, {
+    await store.updateBooking(ref, {
       paymentStatus: 'paid',
       paidAt: new Date().toISOString(),
       channel: 'card'
     });
 
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     assert.strictEqual(booking.paymentStatus, 'paid',
       'Payment status must be "paid" after verification');
     assert.strictEqual(booking.emailDelivered, false,
@@ -168,47 +171,47 @@ async function runTests() {
   // =========================================================================
   console.log('\n── Group 3: send-message security gates ────────');
 
-  test('Unpaid booking cannot trigger email send', () => {
-    const ref = 'YCCCI-PAY-GATE-001';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-GATE1',
+  await testAsync('Unpaid booking cannot trigger email send', async () => {
+    const ref = 'YCCCI-PAY-GATE-101';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-GATE101',
       paymentStatus: 'pending'
     }));
 
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     // This is the exact gate check in /api/send-message
     const isAllowed = booking && booking.paymentStatus === 'paid';
     assert.strictEqual(isAllowed, false,
       'An unpaid booking must be blocked from sending email');
   });
 
-  test('Abandoned/failed payment cannot trigger email send', () => {
-    const ref = 'YCCCI-PAY-GATE-002';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-GATE2',
+  await testAsync('Abandoned/failed payment cannot trigger email send', async () => {
+    const ref = 'YCCCI-PAY-GATE-102';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-GATE102',
       paymentStatus: 'failed'
     }));
 
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     const isAllowed = booking && booking.paymentStatus === 'paid';
     assert.strictEqual(isAllowed, false,
       'A failed payment must be blocked from sending email');
   });
 
-  test('Unknown reference cannot trigger email send (returns 404 equivalent)', () => {
-    const booking = store.getBooking('COMPLETELY-UNKNOWN-REF');
+  await testAsync('Unknown reference cannot trigger email send (returns 404 equivalent)', async () => {
+    const booking = await store.getBooking('COMPLETELY-UNKNOWN-REF');
     assert.strictEqual(booking, null,
       'Unknown reference must return null — no booking to send email for');
   });
 
-  test('Paid booking passes the payment gate', () => {
-    const ref = 'YCCCI-PAY-GATE-003';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-GATE3',
+  await testAsync('Paid booking passes the payment gate', async () => {
+    const ref = 'YCCCI-PAY-GATE-103';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-GATE103',
       paymentStatus: 'paid'
     }));
 
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     const isAllowed = booking && booking.paymentStatus === 'paid';
     assert.strictEqual(isAllowed, true,
       'A paid booking must pass the payment gate');
@@ -219,55 +222,55 @@ async function runTests() {
   // =========================================================================
   console.log('\n── Group 4: Idempotency ────────────────────────');
 
-  test('emailDelivered:true prevents duplicate email dispatch', () => {
-    const ref = 'YCCCI-PAY-IDEM-001';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-IDEM1',
+  await testAsync('emailDelivered:true prevents duplicate email dispatch', async () => {
+    const ref = 'YCCCI-PAY-IDEM-101';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-IDEM101',
       paymentStatus: 'paid',
       emailDelivered: true,      // already sent
       emailSentAt: new Date().toISOString()
     }));
 
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     // Exact gate check from /api/send-message
     const wouldSendAgain = booking && !booking.emailDelivered;
     assert.strictEqual(wouldSendAgain, false,
       'Must not send again when emailDelivered is already true');
   });
 
-  test('After first send, store records emailDelivered:true and prevents second send', () => {
-    const ref = 'YCCCI-PAY-IDEM-002';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-IDEM2',
+  await testAsync('After first send, store records emailDelivered:true and prevents second send', async () => {
+    const ref = 'YCCCI-PAY-IDEM-102';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-IDEM102',
       paymentStatus: 'paid',
       emailDelivered: false
     }));
 
     // Simulate first successful send
-    store.updateBooking(ref, {
+    await store.updateBooking(ref, {
       emailDelivered: true,
       emailSentAt: new Date().toISOString(),
       emailProvider: 'Brevo'
     });
 
     // Simulate second request (duplicate click)
-    const booking = store.getBooking(ref);
+    const booking = await store.getBooking(ref);
     const wouldSendAgain = booking && !booking.emailDelivered;
     assert.strictEqual(wouldSendAgain, false,
       'Second request must be blocked after emailDelivered is set to true');
     assert.strictEqual(booking.emailProvider, 'Brevo');
   });
 
-  test('Email failure preserves paid status and permits safe retry', () => {
-    const ref = 'YCCCI-PAY-RETRY-001';
-    store.saveBooking(makeBooking(ref, {
-      bookingReference: 'YCCCI-NOV-2026-RETRY1',
+  await testAsync('Email failure preserves paid status and permits safe retry', async () => {
+    const ref = 'YCCCI-PAY-RETRY-101';
+    await store.saveBooking(makeBooking(ref, {
+      bookingReference: 'YCCCI-NOV-2026-RETRY101',
       paymentStatus: 'paid',
       emailDelivered: false,
       emailError: 'SMTP connection timeout'
     }));
 
-    const check = store.getBooking(ref);
+    const check = await store.getBooking(ref);
     assert.strictEqual(check.paymentStatus, 'paid',
       'Payment must remain PAID after email failure');
     assert.strictEqual(check.emailDelivered, false,
@@ -278,8 +281,8 @@ async function runTests() {
     assert.strictEqual(canRetry, true, 'Retry must be allowed after email failure');
 
     // Simulate successful retry
-    store.updateBooking(ref, { emailDelivered: true, emailError: null, emailSentAt: new Date().toISOString() });
-    const retried = store.getBooking(ref);
+    await store.updateBooking(ref, { emailDelivered: true, emailError: null, emailSentAt: new Date().toISOString() });
+    const retried = await store.getBooking(ref);
     assert.strictEqual(retried.emailDelivered, true);
     assert.strictEqual(retried.emailError, null);
     assert.strictEqual(retried.paymentStatus, 'paid', 'Payment status must still be paid after retry');
@@ -487,6 +490,9 @@ async function runTests() {
   console.log('\n══════════════════════════════════════════════════');
   console.log(`  Test suite finished: ${passed} passed, ${failed} failed`);
   console.log('══════════════════════════════════════════════════\n');
+
+  // Close the MongoDB connection so the process exits cleanly
+  await store.close();
 
   if (failed > 0) process.exit(1);
 }
