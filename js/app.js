@@ -370,13 +370,17 @@ async function proceedToPaystackPayment() {
       // Redirect user to official Paystack Checkout
       window.location.href = data.authorization_url;
     } else {
-      const errMsg = (data && data.message) ? data.message : 'Unable to connect to Paystack payment gateway.';
-      alert(`Payment Initialization Notice: ${errMsg}`);
+      // Show a professional, user-friendly message — never expose raw backend errors
+      showModalPaymentError(
+        'We\'re temporarily unable to initialize your payment. Your booking information has been retained. Please try again shortly or contact the church administration for assistance.'
+      );
       resetProceedButton();
     }
   } catch (err) {
-    console.error('Paystack initialization error:', err);
-    alert('A network connection error occurred while reaching the payment gateway. Please check your internet and try again.');
+    // Network or connection failure — friendly message, no technical detail
+    showModalPaymentError(
+      'A connection error occurred while reaching the payment gateway. Please check your internet connection and try again.'
+    );
     resetProceedButton();
   }
 }
@@ -394,6 +398,38 @@ function resetProceedButton() {
     btnText.innerText = `PROCEED TO PAYSTACK (₦${currentBookingDraft.offeringAmount.toLocaleString()})`;
   }
   if (btnIcon) btnIcon.classList.remove('hidden');
+}
+
+/**
+ * Show a professional error message inside the booking review modal.
+ * Never exposes raw backend error messages or technical details to the customer.
+ */
+function showModalPaymentError(message) {
+  // Remove any existing error banner first
+  const existing = document.getElementById('modalPaymentError');
+  if (existing) existing.remove();
+
+  const modal = document.getElementById('bookingReviewModal');
+  if (!modal) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'modalPaymentError';
+  banner.className = 'p-3 rounded-xl text-sm flex items-start gap-2 bg-red-50 border border-red-200 text-red-900 shadow-sm mb-2';
+  banner.innerHTML = `
+    <span class="material-symbols-outlined text-[18px] shrink-0 mt-0.5 text-red-600">error</span>
+    <div class="flex-1">
+      <p class="font-semibold text-sm">Payment Unavailable</p>
+      <p class="text-xs mt-0.5 leading-relaxed">${escapeHtml(message)}</p>
+    </div>
+    <button type="button" onclick="document.getElementById('modalPaymentError').remove()" class="text-xs text-red-700 font-semibold hover:underline shrink-0">✕</button>
+  `;
+
+  // Insert the banner above the action buttons inside the modal body
+  const actionArea = document.getElementById('proceedToPaystackBtn');
+  if (actionArea && actionArea.parentNode) {
+    actionArea.parentNode.insertBefore(banner, actionArea);
+    banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 // -----------------------------------------------------------------------------

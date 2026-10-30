@@ -244,9 +244,18 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('[Paystack Init Error]:', error.message);
+    // Return a safe, generic message — never expose internal config errors to the browser
+    const isConfigError = error.message && (
+      error.message.includes('MONGODB_URI') ||
+      error.message.includes('MongoDB') ||
+      error.message.includes('PAYSTACK_SECRET_KEY') ||
+      error.message.includes('not configured')
+    );
     return res.status(500).json({
       success: false,
-      message: error.message || 'Unable to initialize Paystack payment. Please try again.'
+      message: isConfigError
+        ? 'We\'re temporarily unable to process your booking. Please try again shortly or contact the church administration for assistance.'
+        : (error.message || 'Unable to initialize Paystack payment. Please try again.')
     });
   }
 });
@@ -351,9 +360,12 @@ app.get('/api/verify-payment/:reference', async (req, res) => {
 
   } catch (error) {
     console.error('[Verify Error]:', error.message);
+    const isConfigError = error.message && (error.message.includes('MONGODB_URI') || error.message.includes('MongoDB') || error.message.includes('not configured'));
     return res.status(500).json({
       success: false,
-      message: error.message || 'Payment verification failed. Please check your reference and try again.'
+      message: isConfigError
+        ? 'We\'re temporarily unable to verify your payment. Please try again or contact the church administration with your payment reference.'
+        : (error.message || 'Payment verification failed. Please check your reference and try again.')
     });
   }
 });
@@ -435,9 +447,12 @@ app.post('/api/send-message', async (req, res) => {
       });
     }
 
+    const isConfigError = error.message && (error.message.includes('MONGODB_URI') || error.message.includes('MongoDB') || error.message.includes('not configured'));
     return res.status(500).json({
       success: false,
-      message: 'Unable to submit your Mass intention at this time. Please try again.'
+      message: isConfigError
+        ? 'We\'re temporarily unable to submit your intention. Please try again shortly or contact the church administration for assistance.'
+        : 'Unable to submit your Mass intention at this time. Please try again.'
     });
   }
 });
@@ -606,7 +621,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
   const brevoUser = process.env.BREVO_SMTP_USER || '';
   const brevoReady = !!(
@@ -627,4 +642,19 @@ app.listen(PORT, () => {
   console.log(`  Email Provider:   ${emailStatus}`);
   console.log(`  Database:         ${mongoStatus}`);
   console.log(`======================================================\n`);
+
+  // Probe MongoDB connection at startup so misconfiguration is caught immediately
+  // rather than silently failing during a customer's checkout.
+  if (mongoReady) {
+    try {
+      await store.getBooking('__startup_probe__');
+      console.log('✅ [Startup] MongoDB Atlas connection verified.');
+    } catch (err) {
+      console.error(`❌ [Startup] MongoDB connection FAILED: ${err.message}`);
+      console.error('   Set MONGODB_URI in Render Environment Variables and redeploy.');
+    }
+  } else {
+    console.error('❌ [Startup] MONGODB_URI is not set. All booking operations will fail.');
+    console.error('   Add MONGODB_URI to Render Environment Variables and redeploy.');
+  }
 });
