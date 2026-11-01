@@ -195,7 +195,7 @@ app.post('/api/initialize-payment', paymentLimiter, async (req, res) => {
         {
           display_name: 'Deceased Souls',
           variable_name: 'deceased_souls',
-          value: deceasedNames.slice(0, 5).join(', ') + (deceasedNames.length > 5 ? ` (+${deceasedNames.length - 5} more)` : '')
+          value: deceasedNames.join(', ')
         },
         {
           display_name: 'Offering Amount',
